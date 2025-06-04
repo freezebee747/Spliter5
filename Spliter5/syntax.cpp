@@ -83,10 +83,51 @@ void SyntaxChecker::VariableCheck(Variable& var){
 }
 
 void SyntaxChecker::ExplicitRuleCheck(Explicit_Rule& ex){
-	//target 체크
+	//target 검사
+	for (const auto& target : ex.target) {
+		//1.변수 검사
+		//먼저 변수인지 검사
+		unsigned var_count = VariableCounter(target);
+		if (var_count == 1) {
+			//1.1 변수가 하나일 때
+			//즉시 확장후 target_set에 저장
+			std::vector<std::string> temp;
+			temp.push_back(target);
+			variable_expend(temp, variable_map, ec);
+			target_map.insert(temp[0]);
+			return;
+		}
+		else if (var_count > 1) {
+			std::string temp = target;
+			std::vector<std::string> variables;
+			variables = SplitValues(target);
+			variable_expend(variables, variable_map, ec);
+			temp = ReplaceVariable(variables, temp);
+			target_map.insert(temp);
+			return;
+		}
 
-	//prerequisite 체크
 
-	//recipe 체크
+		//2. 와일드카드가 사용되었는가?
+		//사용된 경우 에러로 처리한다. 와일드카드는 target에서 사용될 수 없다.
+		size_t finder = target.find('*');
+		if (finder != std::string::npos) {
+			ec.AddError("E101", ex.line, Severity::Error);
+			return;
+		}
+
+		//3. 타겟 이름이 올바른가?
+		finder = target.find_first_of("$=");
+		if (finder != std::string::npos) {
+			//target에 $, = 가 쓰였으면 주의를 줌(에러가 아님)
+			ec.AddError("E102", ex.line, Severity::Warning);
+		}
+
+		//4. target이름이 중복되었는가?
+		if (target_map.find(target) != target_map.end()) {
+			//중복사용된 경우 에러로 처리한다.
+			ec.AddError("E103", ex.line, Severity::Error);
+		}
+	}
 }
 

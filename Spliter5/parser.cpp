@@ -4,7 +4,7 @@
 //$(var)들을 각각 나눈다
 //예로 "$(var1) $(var2)" 문자열이 입력으로 들어왔다면, $(var1)과 $(var2)로 나누고 그것의 집합을 리턴한다.
 //함수의 경우 마지막 값이 입력값이다.
-std::vector<std::string> SplitValues(std::string& target) {
+std::vector<std::string> SplitValues(const std::string& target) {
 	int count = 0;
 	int depth = 0;
 	std::vector<std::string> result;

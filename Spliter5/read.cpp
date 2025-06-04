@@ -14,6 +14,53 @@ int SeparatorCounter(const std::string& target, char sep) {
 
 	return count;
 }
+
+unsigned VariableCounter(const std::string& var) {
+	unsigned counter = 0;
+	size_t dollar_left_bracket = var.find("$(");
+	size_t right_bracket = var.find(')');
+	
+	if (dollar_left_bracket == std::string::npos || right_bracket == std::string::npos) {
+		return 0;
+	}
+
+	while (dollar_left_bracket != std::string::npos && right_bracket != std::string::npos) {
+		if (dollar_left_bracket > right_bracket) {
+			right_bracket = var.find(')', dollar_left_bracket);
+			continue;
+		}
+
+		counter++;
+		dollar_left_bracket = var.find("$(", dollar_left_bracket + 1);
+		right_bracket = var.find(')', right_bracket + 1);
+	}
+	return counter;
+}
+
+//
+std::string ReplaceVariable(std::vector<std::string>& rep, const std::string& target) {
+	std::string temp = target;
+	int rep_counter = 0;
+
+	if (rep.size() < VariableCounter(target)) return "";
+
+	size_t dollar_left_bracket = temp.find("$(");
+	size_t right_bracket = temp.find(')');
+	while (dollar_left_bracket != std::string::npos && right_bracket != std::string::npos) {
+		if (dollar_left_bracket > right_bracket) {
+			right_bracket = temp.find(')', dollar_left_bracket);
+			continue;
+		}
+		int counter = right_bracket - dollar_left_bracket;
+		temp.replace(dollar_left_bracket, counter + 1, rep[rep_counter]);
+		rep_counter++;
+
+		dollar_left_bracket = temp.find("$(");
+		right_bracket = temp.find(')');
+	}
+	return temp;
+}
+
 // 왼쪽 공백 제거
 std::string ltrim(const std::string& s) {
 	size_t start = s.find_first_not_of(" \t\n\r");

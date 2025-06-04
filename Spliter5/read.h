@@ -32,6 +32,10 @@ std::string join(const std::vector<std::string>& vec, const std::string& delimit
 bool IsVariable(const std::string& str);
 bool IsFunction(const std::string& str);
 
+unsigned VariableCounter(const std::string& var);
+
+std::string ReplaceVariable(std::vector<std::string>& rep, const std::string& target);
+
 std::vector<std::pair<unsigned, std::string>> ReadFileWithLineNumbers(const std::string& filename);
 std::vector<std::pair<unsigned, std::string>> JoinSplitLine(std::vector<std::pair<unsigned, std::string>>& raw);
 

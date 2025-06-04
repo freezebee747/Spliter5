@@ -6,7 +6,7 @@
 enum class BlockType { variable, rule, none };
 
 std::vector<std::string> ExpendPatternRule(const std::string& pattern, const std::unordered_set<std::string>& filenames);
-std::vector<std::string> SplitValues(std::string& target);
+std::vector<std::string> SplitValues(const std::string& target);
 void variable_expend(std::vector<std::string>& targets, std::unordered_map<std::string, std::string>& variables, ErrorCollector& errors);
 void additional_variable_expend(std::string& value, std::unordered_map<std::string, std::string>& variables, ErrorCollector& errors);
 
