@@ -12,6 +12,9 @@ $(objects): %.o: %.c # this is test text
 main.o: main.c defs.h
 	$(CC) -c main.c
 
+*.c: test.h
+	$(CC) -c test.h
+
 $(objects): test.c defs.c
 	$(CC) -o all $<
 

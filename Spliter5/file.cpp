@@ -75,10 +75,12 @@ std::unordered_set<std::string> FileManagement::SearchFilenames() {
 }
 
 std::unordered_set<std::string> FileManagement::SearchFilenames(const std::string& directory) {
+	std::unordered_set<std::string> filenames;
+
 	std::filesystem::path p = directory;
 	if (!std::filesystem::exists(p) || !std::filesystem::is_directory(p)) {
 		std::cerr << "유효하지 않은 디렉터리입니다.\n";
-		return std::unordered_set<std::string>();
+		return filenames;
 	}
 
 	for (const auto& entry : std::filesystem::directory_iterator(p)) {
@@ -87,6 +89,7 @@ std::unordered_set<std::string> FileManagement::SearchFilenames(const std::strin
 		}
 	}
 
+	return filenames;
 }
 
 bool FileManagement::IsExistFile(std::string filename) {

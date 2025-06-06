@@ -24,7 +24,8 @@ private:
 	ErrorCollector ec;
 public:
 	static std::unordered_set<std::string>& GetTargets();
+	std::vector<std::shared_ptr<ASTNode>> Getnodes();
+	ErrorCollector& GetError();
 	void parsing(const std::string& filename);
 	std::vector<Block> SplitByBlock(std::vector<std::pair<unsigned, std::string>>& file);
-	std::vector<std::shared_ptr<ASTNode>> Getnodes();
 };

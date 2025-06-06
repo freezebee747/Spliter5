@@ -5,7 +5,7 @@
 #include <regex>
 #include <unordered_map>
 #include <unordered_set>
-
+#include <iostream>
 class SyntaxChecker {
 private:
 	std::vector<std::shared_ptr<ASTNode>> nodes;
@@ -14,11 +14,13 @@ private:
 	ErrorCollector ec;
 	FileManagement fm;
 public:
-	SyntaxChecker(std::vector<std::shared_ptr<ASTNode>>& node, ErrorCollector& _ec);
+	SyntaxChecker(std::vector<std::shared_ptr<ASTNode>> node, ErrorCollector& _ec);
 	static const std::unordered_map<std::string, std::string>& GetVariables();
 	void SyntaxCheck();
 	void VariableCheck(Variable& var);
 	void ExplicitRuleCheck(Explicit_Rule& ex);
 	void PatternRuleCheck(Pattern_Rule& pr);
 	void StaticPatternRuleCheck(Static_Pattern_Rule& spr);
+
+	void PrintErrors();
 };

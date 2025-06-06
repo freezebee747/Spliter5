@@ -233,10 +233,6 @@ std::vector<Block> Parser::SplitByBlock(std::vector<std::pair<unsigned, std::str
 
 		//만일 빈 라인이면 일단 넘긴다.
 		if (str.empty())continue;
-		if (str.find_first_of(":=") == std::string::npos) {
-			ec.AddError("E001", line, Severity::Error);
-			continue;
-		}
 		//변수 처리
 		//만일 tab으로 시작하지 않으면서 = 가 포함되어있다면 변수이므로 한 블록으로 처리한다..
 		//일단 즉시 확장 변수이던 누적 변수이던 변수로 취급하자
@@ -279,4 +275,8 @@ std::vector<Block> Parser::SplitByBlock(std::vector<std::pair<unsigned, std::str
 
 std::vector<std::shared_ptr<ASTNode>> Parser::Getnodes(){
 	return nodes;
+}
+
+ErrorCollector& Parser::GetError(){
+	return ec;
 }

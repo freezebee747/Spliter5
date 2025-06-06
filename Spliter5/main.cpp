@@ -1,9 +1,11 @@
-#include "parser.h"
+#include "syntax.h"
 #include<iostream>
 int main() {
-	std::vector<std::string> test1 = { "rep1", "rep2" };
-	std::string test2 = "$(test1)_$(test2)";
-
-	std::cout << ReplaceVariable(test1, test2) << std::endl;
+	Parser par;
+	par.parsing("test.txt");
+	DirSingleton::GetInstance().SetDir("C:\\Users\\È²±ÙÇÏ\\Desktop\\testfolder");
+	SyntaxChecker sc(par.Getnodes(), par.GetError());
+	sc.SyntaxCheck();
+	sc.PrintErrors();
 
 }

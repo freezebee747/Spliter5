@@ -2,24 +2,7 @@
 
 std::unordered_map<std::string, std::string> SyntaxChecker::variable_map;
 
-std::vector<std::string>ExpendPatternRule(const std::string& pattern, const std::unordered_set<std::string>& filenames) {
-	if (SeparatorCounter(pattern, '%') != 1) {
-		return std::vector<std::string>();
-	}
-	size_t sep = pattern.find("%");
-	std::string prefix = safe_substr(pattern, 0, sep);
-	std::string suffix = pattern.substr(sep + 1, pattern.size() - sep);
-	std::vector<std::string> result;
-
-	for (const auto& i : filenames) {
-		if (i.substr(0, prefix.size()) == prefix && i.substr(i.size() - suffix.size(), suffix.size()) == suffix) {
-			result.push_back(i);
-		}
-	}
-	return result;
-}
-
-SyntaxChecker::SyntaxChecker(std::vector<std::shared_ptr<ASTNode>>& node, ErrorCollector& _ec) {
+SyntaxChecker::SyntaxChecker(std::vector<std::shared_ptr<ASTNode>> node, ErrorCollector& _ec) {
 	nodes = node;
     ec = _ec;
 	fm.SaveFilename();
@@ -285,5 +268,13 @@ void SyntaxChecker::StaticPatternRuleCheck(Static_Pattern_Rule& spr){
 
 }
 
+void SyntaxChecker::PrintErrors(){
+	std::vector<Error> err = ec.GetAll();
+	std::string messages;
+	for (const auto& i : err) {
+		messages = ErrorMessage::GetInstance().GetMessage(i.code);
+		std::cout << i.line_number << ". [" << i.code << "] : " << messages << "\n";
+	}
 
+}
 
