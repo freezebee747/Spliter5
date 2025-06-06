@@ -1,6 +1,8 @@
 #include "parser.h"
 #include "function.h"
 
+std::unordered_set<std::string> Parser::target_names;
+
 //$(var)들을 각각 나눈다
 //예로 "$(var1) $(var2)" 문자열이 입력으로 들어왔다면, $(var1)과 $(var2)로 나누고 그것의 집합을 리턴한다.
 //함수의 경우 마지막 값이 입력값이다.
@@ -85,6 +87,11 @@ void additional_variable_expend(std::string& value, std::unordered_map<std::stri
 }
 
 
+std::unordered_set<std::string>& Parser::GetTargets()
+{
+	return target_names;
+}
+
 void Parser::parsing(const std::string& filename){
 	raw_file = ReadFileWithLineNumbers(filename);
 	std::vector<std::pair<unsigned, std::string>> combine_line = JoinSplitLine(raw_file);
@@ -131,14 +138,40 @@ void Parser::parsing(const std::string& filename){
 					nodes.push_back(std::make_shared<Phony_Target>(pt));
 					continue;
 				}
+				else if (first_line.find("%") != std::string::npos) {
+					Pattern_Rule pr;
+					pr.line = block._lines[0].first;
+					pr.target_pattern = trim(safe_substr(first_line, 0, colon_pos));
 
+					size_t intTemp = (first_line.find(';') != std::string::npos) ? first_line.find(';') : first_line.size();
+
+					pr.prerequisite_pattern = trim(safe_substr(first_line, colon_pos + 1, intTemp - colon_pos - 1));
+
+					if (first_line.find(';') != std::string::npos) {
+						std::string rec = safe_substr(first_line, intTemp, first_line.size() - intTemp);
+						if (rec != "") {
+							pr.recipes.push_back({ block._lines[0].first, rec });
+						}
+					}
+
+					for (size_t i = 1; i < block._lines.size(); i++) {
+						pr.recipes.push_back({ block._lines[i].first, trim(block._lines[i].second) });
+					}
+					nodes.push_back(std::make_shared<Pattern_Rule>(pr));
+					continue;
+				}
 				else {
 					Explicit_Rule ex;
 					ex.line = block._lines[0].first;
 					ex.target = SplitSpace(trim(safe_substr(first_line, 0, colon_pos)));
-					
+					std::vector<std::string> _targets = SplitSpace(trim(safe_substr(first_line, 0, colon_pos)));
+					for (const auto& name : _targets) {
+						target_names.emplace(name);  
+					}
 					size_t intTemp = (first_line.find(';') != std::string::npos) ? first_line.find(';') : first_line.size();
 					
+					ex.prerequisite = SplitSpace(trim(safe_substr(first_line, colon_pos + 1, intTemp - colon_pos - 1)));
+
 					if (first_line.find(';') != std::string::npos) {
 						std::string rec = safe_substr(first_line, intTemp, first_line.size() - intTemp);
 						if (rec != "") {
@@ -164,6 +197,7 @@ void Parser::parsing(const std::string& filename){
 
 				nodes.push_back(std::make_shared<Static_Pattern_Rule>(spr));
 			}
+	
 		}
 	}
 }
@@ -199,7 +233,10 @@ std::vector<Block> Parser::SplitByBlock(std::vector<std::pair<unsigned, std::str
 
 		//만일 빈 라인이면 일단 넘긴다.
 		if (str.empty())continue;
-
+		if (str.find_first_of(":=") == std::string::npos) {
+			ec.AddError("E001", line, Severity::Error);
+			continue;
+		}
 		//변수 처리
 		//만일 tab으로 시작하지 않으면서 = 가 포함되어있다면 변수이므로 한 블록으로 처리한다..
 		//일단 즉시 확장 변수이던 누적 변수이던 변수로 취급하자

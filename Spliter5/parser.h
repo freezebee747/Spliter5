@@ -20,8 +20,10 @@ class Parser {
 private:
 	std::vector<std::shared_ptr<ASTNode>> nodes;
 	std::vector<std::pair<unsigned, std::string>> raw_file;
+	static std::unordered_set<std::string> target_names;
 	ErrorCollector ec;
 public:
+	static std::unordered_set<std::string>& GetTargets();
 	void parsing(const std::string& filename);
 	std::vector<Block> SplitByBlock(std::vector<std::pair<unsigned, std::string>>& file);
 	std::vector<std::shared_ptr<ASTNode>> Getnodes();
