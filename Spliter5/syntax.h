@@ -6,6 +6,15 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <iostream>
+
+struct Explicit_ex {
+	unsigned line;
+	std::string target;
+	std::vector<std::string> prerequisite;
+	std::vector<std::pair<unsigned, std::string>> recipes;
+
+};
+
 class SyntaxChecker {
 private:
 	std::vector<std::shared_ptr<ASTNode>> nodes;

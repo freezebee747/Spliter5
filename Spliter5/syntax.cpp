@@ -108,86 +108,122 @@ void SyntaxChecker::ExplicitRuleCheck(Explicit_Rule& ex){
 			target_map.insert(temp);
 			return true;
 		}
-		return false;
 	};
+	Explicit_ex e_x;
+	std::vector<Explicit_ex> ex_checker;
 
-	//target 검사
-	for (const auto& target : ex.target) {
-		//1.변수 검사
-		//먼저 변수인지 검사
-		variable_check_lambda(target);
+	for (auto& i : ex.target) {
+		//target은 즉시확장
 
+		unsigned var_count = VariableCounter(i);
+		if (var_count == 1) {
+			//1.1 변수가 하나일 때
+			std::vector<std::string> temp;
+			temp.push_back(i);
+			variable_expend(temp, variable_map, ec);
+			ex.target = SplitSpace(temp[0]);
+		}
+		else if (var_count > 1) {
+			std::string temp = i;
+			std::vector<std::string> variables;
+			variables = SplitValues(i);
+			variable_expend(variables, variable_map, ec);
+			temp = ReplaceVariable(variables, temp);
+		}
+	}
 
-		//2. 와일드카드가 사용되었는가?
-		//사용된 경우 에러로 처리한다. 와일드카드는 target에서 사용될 수 없다.
-		size_t finder = target.find('*');
+	for (auto& i : ex.prerequisite) {
+		//prerequisite는 즉시 확장
+		unsigned var_count = VariableCounter(i);
+		if (var_count == 1) {
+			//1.1 변수가 하나일 때
+			std::vector<std::string> temp;
+			temp.push_back(i);
+			variable_expend(temp, variable_map, ec);
+			ex.prerequisite = SplitSpace(temp[0]);
+		}
+		else if (var_count > 1) {
+			std::string temp = i;
+			std::vector<std::string> variables;
+			variables = SplitValues(i);
+			variable_expend(variables, variable_map, ec);
+			temp = ReplaceVariable(variables, temp);
+		}
+	}
+
+	if (ex.target.size() > 1) {
+		for (const auto& target : ex.target) {
+			e_x.line = ex.line;
+			e_x.target = target;
+			e_x.prerequisite = ex.prerequisite;
+			e_x.recipes = ex.recipes;
+			ex_checker.push_back(e_x);
+		}
+	}
+	else if (ex.target.size() == 1) {
+		e_x.line = ex.line;
+		e_x.target = ex.target[0];
+		e_x.prerequisite = ex.prerequisite;
+		e_x.recipes = ex.recipes;
+		ex_checker.push_back(e_x);
+	}
+
+	for (const auto& ex_rule : ex_checker) {
+
+		size_t finder = ex_rule.target.find('*');
 		if (finder != std::string::npos) {
 			ec.AddError("E101", ex.line, Severity::Error);
 			continue;
 		}
 
-		//3. 타겟 이름이 올바른가?
-		finder = target.find_first_of("$=");
+		finder = ex_rule.target.find_first_of("$=");
 		if (finder != std::string::npos) {
 			//target에 $, = 가 쓰였으면 주의를 줌(에러가 아님)
-			ec.AddError("E102", ex.line, Severity::Warning);
+			ec.AddError("E102", ex_rule.line, Severity::Warning);
 		}
 
 		//4. target이름이 중복되었는가?
-		auto expanded_target = target;
-		unsigned var_count = VariableCounter(target);
-		if (var_count >= 1) {
-			std::vector<std::string> temp;
-			temp.push_back(target);
-			variable_expend(temp, variable_map, ec);
-			expanded_target = temp[0];
-		}
-
 		// 중복 검사 시 확장된 이름 기준
-		if (target_map.find(expanded_target) != target_map.end()) {
+		if (target_map.find(ex_rule.target) != target_map.end()) {
 			ec.AddError("E103", ex.line, Severity::Error);
 		}
 		else {
-			target_map.insert(expanded_target);
+			target_map.insert(ex_rule.target);
 		}
-	}
 
 
-	for (const auto& preq : ex.prerequisite) {
-		std::unordered_set<std::string>& targets = Parser::GetTargets();
-		//변수 체크
-		variable_check_lambda(preq);
+		for (auto& preq : ex_rule.prerequisite) {
+			std::unordered_set<std::string>& targets = Parser::GetTargets();
+			
+			//2. 와일드카드가 사용되었는가?
+			size_t finder = preq.find('*');
+			bool matched = false;
+			std::regex rx(glob_to_regex(preq));
 
-		//2. 와일드카드가 사용되었는가?
-		size_t finder = preq.find('*');
-		bool matched = false;
-		std::regex rx(glob_to_regex(preq));
-
-		for (const auto& t : targets) {
-			if (std::regex_match(t, rx)) {
-				matched = true;
-				break;
-			}
-		}
-		if (!matched) {
-			// 파일 시스템에서 검색
-			std::unordered_set<std::string> files = fm.SearchFilenames();
-			for (const auto& f : files) {
-				if (std::regex_match(f, rx)) {
+			for (const auto& t : targets) {
+				if (std::regex_match(t, rx)) {
 					matched = true;
 					break;
 				}
 			}
-		}
-		if (!matched) {
-			ec.AddError("E151", ex.line, Severity::Error);  // 아무것도 매칭 안 되면 진짜로 에러
+			if (!matched) {
+				// 파일 시스템에서 검색
+				std::unordered_set<std::string> files = fm.SearchFilenames();
+				for (const auto& f : files) {
+					if (std::regex_match(f, rx)) {
+						matched = true;
+						break;
+					}
+				}
+			}
+			if (!matched) {
+				ec.AddError("E151", ex.line, Severity::Error);  // 아무것도 매칭 안 되면 진짜로 에러
+			}
+
 		}
 
+		//레시피 검사
 	}
-
-	//레시피 검사
-
-
 }
 
 void SyntaxChecker::PatternRuleCheck(Pattern_Rule& pr){

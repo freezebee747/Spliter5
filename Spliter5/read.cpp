@@ -37,7 +37,7 @@ unsigned VariableCounter(const std::string& var) {
 	return counter;
 }
 
-//
+
 std::string ReplaceVariable(std::vector<std::string>& rep, const std::string& target) {
 	std::string temp = target;
 	int rep_counter = 0;
