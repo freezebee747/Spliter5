@@ -51,8 +51,7 @@ void SyntaxChecker::VariableCheck(Variable& var){
 		variable_map.erase(var.name);
 		std::vector<std::string> temp;
 		temp.push_back(var.name);
-		variable_expend(temp, variable_map, ec);
-		std::string value = temp[0];
+		std::string value = variable_expend_ex(temp, variable_map, ec);
 		variable_map.emplace(var.name, value);
 	}
 
@@ -80,76 +79,38 @@ void SyntaxChecker::VariableCheck(Variable& var){
 				checker = finder->second;
 			}
 		}
-
 	}
 }
 
 void SyntaxChecker::ExplicitRuleCheck(Explicit_Rule& ex){
-
-	auto variable_check_lambda = [&](std::string var) -> bool {
-		//1.변수 검사
-		//먼저 변수인지 검사
-		unsigned var_count = VariableCounter(var);
-		if (var_count == 1) {
-			//1.1 변수가 하나일 때
-			//즉시 확장후 target_set에 저장
-			std::vector<std::string> temp;
-			temp.push_back(var);
-			variable_expend(temp, variable_map, ec);
-			target_map.insert(temp[0]);
-			return true;
-		}
-		else if (var_count > 1) {
-			std::string temp = var;
-			std::vector<std::string> variables;
-			variables = SplitValues(var);
-			variable_expend(variables, variable_map, ec);
-			temp = ReplaceVariable(variables, temp);
-			target_map.insert(temp);
-			return true;
-		}
-	};
 	Explicit_ex e_x;
 	std::vector<Explicit_ex> ex_checker;
+	std::vector<std::string> variables_temp;
 
 	for (auto& i : ex.target) {
 		//target은 즉시확장
-
-		unsigned var_count = VariableCounter(i);
-		if (var_count == 1) {
-			//1.1 변수가 하나일 때
-			std::vector<std::string> temp;
-			temp.push_back(i);
-			variable_expend(temp, variable_map, ec);
-			ex.target = SplitSpace(temp[0]);
-		}
-		else if (var_count > 1) {
-			std::string temp = i;
-			std::vector<std::string> variables;
-			variables = SplitValues(i);
-			variable_expend(variables, variable_map, ec);
-			temp = ReplaceVariable(variables, temp);
-		}
+		std::vector<std::string> temp;
+		std::string temp_string;
+		temp.push_back(i);
+		temp_string = variable_expend_ex(temp, variable_map, ec);
+		temp = SplitSpace(trim(temp_string));
+		variables_temp.insert(variables_temp.end(), temp.begin(), temp.end());
 	}
+	ex.target = variables_temp;
 
+	variables_temp.clear();
 	for (auto& i : ex.prerequisite) {
 		//prerequisite는 즉시 확장
-		unsigned var_count = VariableCounter(i);
-		if (var_count == 1) {
-			//1.1 변수가 하나일 때
-			std::vector<std::string> temp;
-			temp.push_back(i);
-			variable_expend(temp, variable_map, ec);
-			ex.prerequisite = SplitSpace(temp[0]);
-		}
-		else if (var_count > 1) {
-			std::string temp = i;
-			std::vector<std::string> variables;
-			variables = SplitValues(i);
-			variable_expend(variables, variable_map, ec);
-			temp = ReplaceVariable(variables, temp);
-		}
+		std::vector<std::string> temp;
+		std::string temp_string;
+		temp.push_back(i);
+		temp_string = variable_expend_ex(temp, variable_map, ec);
+		temp = SplitSpace(trim(temp_string));
+		variables_temp.insert(variables_temp.end(), temp.begin(), temp.end());
 	}
+	ex.prerequisite = variables_temp;
+
+	variables_temp.clear();
 
 	if (ex.target.size() > 1) {
 		for (const auto& target : ex.target) {
@@ -226,82 +187,36 @@ void SyntaxChecker::ExplicitRuleCheck(Explicit_Rule& ex){
 	}
 }
 
-void SyntaxChecker::PatternRuleCheck(Pattern_Rule& pr){
-	Explicit_Rule ex;
-	ex.line = pr.line;
-	ex.target = ExpendPatternRule(pr.target_pattern, fm.SearchFilenames());
-	if (pr.prerequisite_pattern.find('%') != std::string::npos) {
-		ex.prerequisite = ExpendPatternRule(pr.prerequisite_pattern, fm.SearchFilenames());
+void SyntaxChecker::PatternRuleCheck(Pattern_Rule& pr) {
+	std::vector<std::string> prerequisites;
+	if (pr.prerequisite_pattern.find("%") != std::string::npos) {
+		prerequisites = ExpendPatternRule(pr.prerequisite_pattern, fm.SearchFilenames());
 	}
-	ex.recipes = pr.recipes;
-	ExplicitRuleCheck(ex);
+	if (pr.target_pattern.find("%") == std::string::npos) {
+		return;
+	}
+	std::string target = pr.target_pattern;
+	size_t point = pr.prerequisite_pattern.find("%");
+	std::string prefix = pr.prerequisite_pattern.substr(0, point);
+	std::string suffix = pr.prerequisite_pattern.substr(point+1, pr.prerequisite_pattern.size() - point);
+	for (const auto& preq : prerequisites) {
+		Explicit_Rule ex;
+		std::string raw_preq = preq.substr(prefix.size(), preq.find(suffix) - prefix.size());
+		target.replace(target.find("%"), 1, raw_preq);
+		ex.target.push_back(target);
+		ex.prerequisite.push_back(preq);
+		ex.recipes = pr.recipes;
+		ExplicitRuleCheck(ex);
+	}
 }
 
 void SyntaxChecker::StaticPatternRuleCheck(Static_Pattern_Rule& spr){
-
-	auto checker = [&](std::vector<std::string>& targets, std::vector<std::string>& result,  std::string& tp) -> bool{
-		if (SeparatorCounter(tp, '%') != 1) {
-			return false;
-		}
-		size_t sep = tp.find("%");
-		std::string prefix = safe_substr(tp, 0, sep);
-		std::string suffix = tp.substr(sep + 1, tp.size() - sep);
-
-		for (const auto& t : targets) {
-			std::string test_prefix = safe_substr(t, 0, prefix.size());
-			std::string test_suffix = safe_substr(t, t.size() - suffix.size(), suffix.size());
-
-			if (test_prefix != prefix) {
-				return false;
-			}
-			if (test_suffix != suffix) {
-				return false;
-			}
-
-			result.push_back(t);
-		}
-		return true;
-	};
-
-	//target 검사
-	std::vector<std::string> targets;
-	for (const auto& target : spr.target) {
+	std::vector<std::string> target_list;
+	for (const auto& target : spr.target){
 		unsigned var_count = VariableCounter(target);
-		if (var_count == 1) {
-			std::vector<std::string> temp;
-			temp.push_back(target);
-			variable_expend(temp, variable_map, ec);
-			targets = SplitSpace(temp[0]);
-		}
-		else if (var_count > 1) {
-			std::string temp = target;
-			std::vector<std::string> variables;
-			variables = SplitValues(target);
-			variable_expend(variables, variable_map, ec);
-			temp = ReplaceVariable(variables, temp);
-			targets = SplitSpace(temp);
-		}
+
+
 	}
-	std::vector<std::string> TargetResult;
-
-	if (!checker(targets, TargetResult, spr.target_pattern)) {
-		//error
-		return;
-	}
-
-	std::vector<std::string> PreqResult;
-	if (!checker(targets, PreqResult, spr.prerequisite_pattern)) {
-		//error
-		return;
-	}
-	Explicit_Rule ex;
-	ex.line = spr.line;
-	ex.target = TargetResult;
-	ex.prerequisite = PreqResult;
-	ex.recipes = spr.recipes;
-
-	ExplicitRuleCheck(ex);
-
 }
 
 void SyntaxChecker::PrintErrors(){

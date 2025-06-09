@@ -19,7 +19,7 @@ unsigned VariableCounter(const std::string& var) {
 	unsigned counter = 0;
 	size_t dollar_left_bracket = var.find("$(");
 	size_t right_bracket = var.find(')');
-	
+
 	if (dollar_left_bracket == std::string::npos || right_bracket == std::string::npos) {
 		return 0;
 	}
@@ -38,10 +38,11 @@ unsigned VariableCounter(const std::string& var) {
 }
 
 
+
 std::string ReplaceVariable(std::vector<std::string>& rep, const std::string& target) {
 	std::string temp = target;
 	int rep_counter = 0;
-
+	std::vector<std::string> split_by_value = tokenizeMakefileStyle(target);
 	if (rep.size() < VariableCounter(target)) return "";
 
 	size_t dollar_left_bracket = temp.find("$(");
@@ -122,6 +123,38 @@ std::vector<std::string> SplitComma(const std::string& target) {
 
 	while (std::getline(ss, item, ',')) {
 		tokens.push_back(trim(item));
+	}
+
+	return tokens;
+}
+
+std::vector<std::string> tokenizeMakefileStyle(const std::string& input) {
+	std::vector<std::string> tokens;
+	size_t i = 0;
+	std::string temp = "";
+
+	while (i < input.size()) {
+		if (input[i] == '$' && i + 1 < input.size() && input[i + 1] == '(') {
+			if (temp != "") {
+				tokens.push_back(temp);
+				temp = "";
+			}
+			// Start of $() block
+			size_t start = i;
+			i += 2; // Skip "$("
+			int depth = 1;
+			while (i < input.size() && depth > 0) {
+				if (input[i] == '(') depth++;
+				else if (input[i] == ')') depth--;
+				i++;
+			}
+			tokens.push_back(input.substr(start, i - start));
+		}
+		else {
+			// Regular character
+			temp = temp + input[i];
+			i++;
+		}
 	}
 
 	return tokens;

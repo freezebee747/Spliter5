@@ -15,6 +15,7 @@ inline const std::unordered_set<std::string> functions = {
 };
 
 int SeparatorCounter(const std::string& target, char sep);
+
 // 왼쪽 공백 제거
 std::string ltrim(const std::string& s);
 // 오른쪽 공백 제거
@@ -26,6 +27,7 @@ int calc_space(const std::string& str, char token, int pos);
 std::string safe_substr(const std::string& str, size_t pos, size_t count);
 std::vector<std::string> SplitSpace(const std::string& target);
 std::vector<std::string> SplitComma(const std::string& target);
+std::vector<std::string> tokenizeMakefileStyle(const std::string& input);
 bool hasWhitespace(const std::string& str);
 std::string join(const std::vector<std::string>& vec, const std::string& delimiter);
 

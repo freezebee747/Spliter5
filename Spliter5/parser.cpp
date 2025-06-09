@@ -7,10 +7,10 @@ std::unordered_set<std::string> Parser::target_names;
 //예로 "$(var1) $(var2)" 문자열이 입력으로 들어왔다면, $(var1)과 $(var2)로 나누고 그것의 집합을 리턴한다.
 //함수의 경우 마지막 값이 입력값이다.
 std::vector<std::string> SplitValues(const std::string& target) {
-	int count = 0;
-	int depth = 0;
+	size_t count = 0;
+	size_t depth = 0;
 	std::vector<std::string> result;
-	std::vector<int> loc;
+	std::vector<size_t> loc;
 
 	while (count < target.size()) {
 		if (target[count] == '$') {
@@ -49,43 +49,6 @@ std::vector<std::string>ExpendPatternRule(const std::string& pattern, const std:
 	}
 	return result;
 }
-void variable_expend(std::vector<std::string>& targets, std::unordered_map<std::string, std::string>& variables, ErrorCollector& errors) {
-	for (auto& i : targets) {
-		std::vector<std::string> vect = SplitValues(i);
-		if (IsFunction(i)) {
-			if (!vect.empty()) {
-				vect.pop_back();
-			}
-			variable_expend(vect, variables, errors);
-			std::string temp = i.substr(2, i.find_first_of(" ") - 2);
-			i = Active_function(temp, vect);
-		}
-		else {
-			for (auto& j : vect) {
-				if (j.size() >= 4 && j[0] == '$' && j[1] == '(' && j.back() == ')') {
-					std::string temp = j.substr(2, j.size() - 3);
-					auto it = variables.find(temp);
-					if (it != variables.end()) {
-						i.replace(i.find(j), j.size(), it->second);
-						additional_variable_expend(i, variables, errors);
-					}
-				}
-			}
-		}
-	}
-}
-
-void additional_variable_expend(std::string& value, std::unordered_map<std::string, std::string>& variables, ErrorCollector& errors) {
-	if (value.size() >= 4 && value[0] == '$' && value[1] == '(' && value.back() == ')') {
-		std::string temp = value.substr(2, value.size() - 3);
-		auto it = variables.find(temp);
-		if (it != variables.end()) {
-			value = it->second;
-			additional_variable_expend(value, variables, errors);
-		}
-	}
-}
-
 
 std::unordered_set<std::string>& Parser::GetTargets()
 {
@@ -279,4 +242,86 @@ std::vector<std::shared_ptr<ASTNode>> Parser::Getnodes(){
 
 ErrorCollector& Parser::GetError(){
 	return ec;
+}
+
+////////////////////////////////////////////
+///////////////////////////////////////////
+
+std::string variable_expend_ex(std::vector<std::string>& variable, std::unordered_map<std::string, std::string>& variables, ErrorCollector& errors) {
+
+	std::string result;
+	for (const auto& var : variable) {
+		if (IsFunction(var)) {
+			//1. 함수 이름과 매개변수 분리
+			//1.1 달러 괄호 제거
+			std::string temp = var.substr(2, var.size() - 3);
+			//1.2 함수 이름 추출
+			size_t space_num = temp.find(" ");
+			std::string name = temp.substr(0, space_num);
+			//1.3 함수 매개변수 추출
+			std::string args_string = temp.substr(space_num, temp.size() - space_num);
+			std::vector<std::string> args = SplitComma(args_string);
+			//1.4 변수 확장
+			args = function_argument_expended(args, variables, errors);
+
+			//1.5 함수 확장
+			result = result + Active_function(name, args);
+		}
+		else if (IsVariable(var)) {
+			std::string temp = var.substr(2, var.size() - 3);
+			auto it = variables.find(temp);
+			if (it != variables.end()) {
+				temp = additional_variable_expend_ex(it->second, variables, errors);
+				result = result + temp;
+			}
+		}
+		else result = result + var;
+	}
+
+	return result;
+}
+
+std::vector<std::string>function_argument_expended(std::vector<std::string>& args, std::unordered_map<std::string, std::string>& variables, ErrorCollector& errors) {
+	std::vector<std::string> result;
+	for (const auto& arg : args) {
+		if (IsFunction(arg)) {
+			//1. 함수 이름과 매개변수 분리
+				//1.1 달러 괄호 제거
+			std::string temp = arg.substr(2, arg.size() - 3);
+			//1.2 함수 이름 추출
+			size_t space_num = temp.find(" ");
+			std::string name = temp.substr(0, space_num);
+			//1.3 함수 매개변수 추출
+			std::string args_string = temp.substr(space_num, temp.size() - space_num);
+			std::vector<std::string> _args = SplitComma(args_string);
+			//1.4 함수 매개변수 확장
+			_args = function_argument_expended(_args, variables, errors);
+
+			result.push_back(Active_function(name, _args));
+		}
+		else if (IsVariable(arg)) {
+			std::string temp = arg.substr(2, arg.size() - 3);
+			auto it = variables.find(temp);
+			if (it != variables.end()) {
+				temp = it->second;
+				temp = additional_variable_expend_ex(temp, variables, errors);
+				result.push_back(temp);
+			}
+		}
+		else result.push_back(arg);
+	}
+	return result;
+}
+
+std::string additional_variable_expend_ex(std::string& value, std::unordered_map<std::string, std::string>& variables, ErrorCollector& errors) {
+	if (value[0] == '$' && value[1] == '(' && value.back() == ')') {
+		std::string temp = value.substr(2, value.size() - 3);
+		auto it = variables.find(temp);
+		if (it != variables.end()) {
+			value = it->second;
+			temp = additional_variable_expend_ex(value, variables, errors);
+			return temp;
+		}
+	}
+	return value;
 }
