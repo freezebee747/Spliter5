@@ -27,9 +27,12 @@ public:
 	static const std::unordered_map<std::string, std::string>& GetVariables();
 	void SyntaxCheck();
 	void VariableCheck(Variable& var);
+	void DirectiveChecker(Directive& dir);
 	void ExplicitRuleCheck(Explicit_Rule& ex);
 	void PatternRuleCheck(Pattern_Rule& pr);
 	void StaticPatternRuleCheck(Static_Pattern_Rule& spr);
-
+	void IncludeOtherSyntax(SyntaxChecker& syn, const std::string& filename);
+	void IncludeOtherSyntax(SyntaxChecker& syn);
+	ErrorCollector& GetErrorCollector();
 	void PrintErrors();
 };

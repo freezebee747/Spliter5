@@ -17,12 +17,18 @@ void SyntaxChecker::SyntaxCheck(){
         if (auto var = dynamic_cast<Variable*>(node.get())) {
             VariableCheck(*var);
         }
+		else if (auto dir = dynamic_cast<Directive*>(node.get())) {
+			DirectiveChecker(*dir);
+		}
         else if (auto ex = dynamic_cast<Explicit_Rule*>(node.get())) {
             ExplicitRuleCheck(*ex);
         }
         else if (auto pattern = dynamic_cast<Pattern_Rule*>(node.get())) {
 			PatternRuleCheck(*pattern);
         }
+		else if (auto spattern = dynamic_cast<Static_Pattern_Rule*>(node.get())) {
+			StaticPatternRuleCheck(*spattern);
+		}
 	}
 }
 
@@ -80,6 +86,10 @@ void SyntaxChecker::VariableCheck(Variable& var){
 			}
 		}
 	}
+}
+
+void SyntaxChecker::DirectiveChecker(Directive& dir){
+	//나중에 정의
 }
 
 void SyntaxChecker::ExplicitRuleCheck(Explicit_Rule& ex){
@@ -182,7 +192,6 @@ void SyntaxChecker::ExplicitRuleCheck(Explicit_Rule& ex){
 			}
 
 		}
-
 		//레시피 검사
 	}
 }
@@ -193,13 +202,20 @@ void SyntaxChecker::PatternRuleCheck(Pattern_Rule& pr) {
 		prerequisites = ExpendPatternRule(pr.prerequisite_pattern, fm.SearchFilenames());
 	}
 	if (pr.target_pattern.find("%") == std::string::npos) {
+		ec.AddError("E201", pr.line, Severity::Error);
 		return;
 	}
-	std::string target = pr.target_pattern;
+	if (SeparatorCounter(pr.target_pattern, '%') != 1) {
+		ec.AddError("E202", pr.line, Severity::Error);
+		return;
+	}
+
 	size_t point = pr.prerequisite_pattern.find("%");
 	std::string prefix = pr.prerequisite_pattern.substr(0, point);
 	std::string suffix = pr.prerequisite_pattern.substr(point+1, pr.prerequisite_pattern.size() - point);
 	for (const auto& preq : prerequisites) {
+
+		std::string target = pr.target_pattern;
 		Explicit_Rule ex;
 		std::string raw_preq = preq.substr(prefix.size(), preq.find(suffix) - prefix.size());
 		target.replace(target.find("%"), 1, raw_preq);
@@ -211,12 +227,54 @@ void SyntaxChecker::PatternRuleCheck(Pattern_Rule& pr) {
 }
 
 void SyntaxChecker::StaticPatternRuleCheck(Static_Pattern_Rule& spr){
-	std::vector<std::string> target_list;
-	for (const auto& target : spr.target){
-		unsigned var_count = VariableCounter(target);
-
-
+	std::vector<std::string> targets;
+	for (const auto& target : spr.target) {
+		if (target[0] == '$' && target[1] == '(' && target[target.size()] == ')') {
+			std::vector<std::string> variable;
+			variable.push_back(target);
+			std::string expend = variable_expend_ex(variable, variable_map, ec);
+			variable = SplitSpace(trim(expend));
+			targets.insert(targets.end(), variable.begin(), variable.end());
+		}
+		else targets.push_back(target);
 	}
+	if (spr.target_pattern.find("%") == std::string::npos) {
+		ec.AddError("E201", spr.line, Severity::Error);
+		return;
+	}
+	if (SeparatorCounter(spr.prerequisite_pattern, '%') != 1) {
+		return;
+	}
+	size_t point = spr.target_pattern.find("%");
+	std::string prefix = spr.target_pattern.substr(0, point);
+	std::string suffix = spr.target_pattern.substr(point + 1, spr.target_pattern.size() - point);
+	for (const auto& t : targets) {
+		std::string preq = spr.prerequisite_pattern;
+		Explicit_Rule ex;
+		std::string raw_target = t.substr(prefix.size(), t.find(suffix) - prefix.size());
+		ex.target.push_back(t);
+		preq.replace(preq.find('%'), 1, raw_target);
+		ex.prerequisite.push_back(preq);
+		ex.recipes = spr.recipes;
+		ExplicitRuleCheck(ex);
+	}
+}
+
+void SyntaxChecker::IncludeOtherSyntax(SyntaxChecker& syn, const std::string& filename){
+	std::unordered_set<std::string> outer_target;
+	target_map.insert(std::move(outer_target.begin()), std::move(outer_target.end()));
+	syn.ec.SetExternalErrors(filename);
+	ec.AppendErrorCollector(syn.GetErrorCollector());
+}
+
+void SyntaxChecker::IncludeOtherSyntax(SyntaxChecker& syn){
+	std::unordered_set<std::string> outer_target;
+	target_map.insert(std::move(outer_target.begin()), std::move(outer_target.end()));
+	ec.AppendErrorCollector(syn.GetErrorCollector());
+}
+
+ErrorCollector& SyntaxChecker::GetErrorCollector(){
+	return ec;
 }
 
 void SyntaxChecker::PrintErrors(){
@@ -226,6 +284,5 @@ void SyntaxChecker::PrintErrors(){
 		messages = ErrorMessage::GetInstance().GetMessage(i.code);
 		std::cout << i.line_number << ". [" << i.code << "] : " << messages << "\n";
 	}
-
 }
 

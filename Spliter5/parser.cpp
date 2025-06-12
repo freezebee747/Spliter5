@@ -1,5 +1,6 @@
 #include "parser.h"
 #include "function.h"
+#include "directive.h"
 
 std::unordered_set<std::string> Parser::target_names;
 
@@ -61,7 +62,17 @@ void Parser::parsing(const std::string& filename){
 	std::vector<Block> blocks = SplitByBlock(combine_line);
 
 	for (const auto& block : blocks) {
-		if (block.type == BlockType::variable) {
+
+		if (block.type == BlockType::directive) {
+			Directive dir;
+			dir.line = block.var_line.first;
+			std::vector<std::string> split = SplitSpace(trim(block.var_line.second));
+			dir.directive = split[0];
+			dir.arguments.insert(dir.arguments.end(), split.begin() + 1, split.end());
+			nodes.push_back(std::make_shared<Directive>(dir));
+		}
+
+		else if (block.type == BlockType::variable) {
 			Variable var;
 			var.line = block.var_line.first;
 			int Sep = block.var_line.second.find('=');
@@ -92,6 +103,11 @@ void Parser::parsing(const std::string& filename){
 				if (trim(safe_substr(first_line, colon_pos + 1, first_line.size() - colon_pos - 1)) == "") {
 					Phony_Target pt;
 					std::string phony_name = trim(safe_substr(first_line, 0, colon_pos));
+					//디폴트 타겟 설정
+					if (default_target == "") {
+						default_target = phony_name;
+					}
+
 					std::vector<std::pair<unsigned, std::string>> phony_recipe;
 					for (size_t i = 1; i < block._lines.size(); i++) {
 						phony_recipe.push_back({ block._lines[i].first,  trim(block._lines[i].second) });
@@ -125,9 +141,15 @@ void Parser::parsing(const std::string& filename){
 				}
 				else {
 					Explicit_Rule ex;
+
 					ex.line = block._lines[0].first;
 					ex.target = SplitSpace(trim(safe_substr(first_line, 0, colon_pos)));
 					std::vector<std::string> _targets = SplitSpace(trim(safe_substr(first_line, 0, colon_pos)));
+					//디폴트 타겟 설정
+					if (default_target == "") {
+						default_target = ex.target[0];
+					}
+
 					for (const auto& name : _targets) {
 						target_names.emplace(name);  
 					}
@@ -160,7 +182,6 @@ void Parser::parsing(const std::string& filename){
 
 				nodes.push_back(std::make_shared<Static_Pattern_Rule>(spr));
 			}
-	
 		}
 	}
 }
@@ -196,6 +217,22 @@ std::vector<Block> Parser::SplitByBlock(std::vector<std::pair<unsigned, std::str
 
 		//만일 빈 라인이면 일단 넘긴다.
 		if (str.empty())continue;
+	
+		//지시자 처리
+		//만일 tab으로 시작하지 않으면서, 스페이스를 기준으로 나누었을 때
+		//첫번째 문자열이 지시자 집합에 있으면 지시자로 처리한다.
+		{
+			std::vector<std::string> temp = SplitSpace(trim(str));
+			if (directive_set.find(temp[0]) != directive_set.end()) {
+				block = std::make_unique<Block>();
+				block->type = BlockType::directive;
+				block->var_line = { line, str };
+				blocks.push_back(*block);
+				block.reset();
+				continue;
+			}
+		}
+
 		//변수 처리
 		//만일 tab으로 시작하지 않으면서 = 가 포함되어있다면 변수이므로 한 블록으로 처리한다..
 		//일단 즉시 확장 변수이던 누적 변수이던 변수로 취급하자
@@ -227,7 +264,6 @@ std::vector<Block> Parser::SplitByBlock(std::vector<std::pair<unsigned, std::str
 			}
 			continue;
 		}
-
 	}
 
 	if (block) {
@@ -235,6 +271,7 @@ std::vector<Block> Parser::SplitByBlock(std::vector<std::pair<unsigned, std::str
 	}
 	return blocks;
 }
+
 
 std::vector<std::shared_ptr<ASTNode>> Parser::Getnodes(){
 	return nodes;

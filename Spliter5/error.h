@@ -7,6 +7,7 @@
 enum class Severity { Warning, Error, Fatal };
 
 struct Error {
+    std::string external_filename = "";
     std::string code;
     unsigned line_number;
     Severity severity;
@@ -29,5 +30,6 @@ public:
     void AddError(const std::string code, unsigned lines, Severity sev);
     void Add(const Error& e) { errors.push_back(e); }
     const std::vector<Error>& GetAll() const { return errors; }
-
+    void SetExternalErrors(const std::string& filename);
+    void AppendErrorCollector(ErrorCollector& ec);
 };

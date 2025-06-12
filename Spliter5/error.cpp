@@ -19,6 +19,10 @@ ErrorMessage::ErrorMessage() {
     messages["E103"] = "target 이름이 중복되었습니다.";
 
     messages["E151"] = "prerequisite과 일치하는 target 또는 파일이 존재하지 않습니다.";
+
+    //2번지-패턴 규칙 에러
+    messages["E201"] = "pattern rule의 target이 pattern이 아닙니다.";
+    messages["E202"] = "pattern rule의 target에 두개 이상의 % 가 있습니다.";
     // ...
 }
 void ErrorCollector::AddError(const std::string code, unsigned lines, Severity sev) {
@@ -27,6 +31,18 @@ void ErrorCollector::AddError(const std::string code, unsigned lines, Severity s
     err.line_number = lines;
     err.severity = sev;
     errors.push_back(err);
+}
+
+
+void ErrorCollector::SetExternalErrors(const std::string& filename){
+    for (auto& i : errors) {
+        i.external_filename = filename;
+    }
+}
+
+void ErrorCollector::AppendErrorCollector(ErrorCollector& ec){
+    std::vector<Error> temp = ec.GetAll();
+    errors.insert(errors.end(), temp.begin(), temp.end());
 }
 
 std::string ErrorMessage::GetMessage(const std::string& code) const {

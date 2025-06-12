@@ -3,7 +3,8 @@
 #include "AST.h"
 #include "error.h"
 
-enum class BlockType { variable, rule, none };
+
+enum class BlockType { variable, rule, directive, none };
 
 std::vector<std::string> ExpendPatternRule(const std::string& pattern, const std::unordered_set<std::string>& filenames);
 std::vector<std::string> SplitValues(const std::string& target);
@@ -23,6 +24,7 @@ private:
 	std::vector<std::shared_ptr<ASTNode>> nodes;
 	std::vector<std::pair<unsigned, std::string>> raw_file;
 	static std::unordered_set<std::string> target_names;
+	std::string default_target = "";
 	ErrorCollector ec;
 public:
 	static std::unordered_set<std::string>& GetTargets();
@@ -30,4 +32,5 @@ public:
 	ErrorCollector& GetError();
 	void parsing(const std::string& filename);
 	std::vector<Block> SplitByBlock(std::vector<std::pair<unsigned, std::string>>& file);
+
 };

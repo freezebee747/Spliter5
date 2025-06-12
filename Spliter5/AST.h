@@ -13,6 +13,12 @@ struct ASTNode {
     virtual ~ASTNode() = default;
 };
 
+struct Directive : ASTNode {
+    unsigned line;
+    std::string directive;
+    std::vector<std::string> arguments;
+};
+
 struct Variable :ASTNode {
     unsigned line;
     std::string name;
