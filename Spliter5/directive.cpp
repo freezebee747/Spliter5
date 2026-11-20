@@ -1,27 +1,43 @@
-#include <functional>
+﻿#include "directive.h"
 
-#include "directive.h"
-#include "file.h"
+namespace {
 
-std::unordered_map<std::string, std::function<void(DirectiveContext&)>> directive_table = {
-    {"include", include_directive},
-    {"sinclude", sinclude_directive},
-
-};
-
-void include_directive(DirectiveContext& ctx) {
-    Parser par;
-    par.parsing(ctx.filename);
-    SyntaxChecker sc(par.Getnodes(), par.GetError());
-    sc.SyntaxCheck();
-    ctx.checker.IncludeOtherSyntax(sc, ctx.filename);
+DirectiveHandler IncludeHandler(bool optional) {
+	return [optional](const DirectiveCall& call) {
+		if (!call.include) return;
+		for (const auto& path : call.arguments) {
+			call.include(path, optional);
+		}
+	};
 }
 
-void sinclude_directive(DirectiveContext& ctx) {
-    Parser par;
-    par.parsing(ctx.filename);
-    SyntaxChecker sc(par.Getnodes(), par.GetError());
-    sc.SyntaxCheck();
-    ctx.checker.IncludeOtherSyntax(sc);
+void Ignore(const DirectiveCall&) {}
+
+}  // namespace
+
+DirectiveRegistry DirectiveRegistry::WithBuiltins() {
+	DirectiveRegistry r;
+	r.Register("include", IncludeHandler(false));
+	r.Register("-include", IncludeHandler(true));
+	r.Register("sinclude", IncludeHandler(true));
+
+	// 인식만 하고 아직 검사하지 않는 지시어
+	for (const char* name : { "vpath", "override", "export", "unexport",
+							  "ifeq", "ifneq", "ifdef", "ifndef", "else", "endif" }) {
+		r.Register(name, Ignore);
+	}
+	return r;
 }
 
+void DirectiveRegistry::Register(const std::string& name, DirectiveHandler handler) {
+	handlers_[name] = std::move(handler);
+}
+
+bool DirectiveRegistry::IsDirective(const std::string& keyword) const {
+	return handlers_.count(keyword) != 0;
+}
+
+void DirectiveRegistry::Run(const DirectiveCall& call) const {
+	auto it = handlers_.find(call.node.name);
+	if (it != handlers_.end()) it->second(call);
+}

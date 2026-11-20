@@ -1,36 +1,39 @@
-#pragma once
-#include "read.h"
+﻿#pragma once
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
 #include "AST.h"
+#include "directive.h"
 #include "error.h"
 
-
-enum class BlockType { variable, rule, directive, none };
-
-std::vector<std::string> ExpendPatternRule(const std::string& pattern, const std::unordered_set<std::string>& filenames);
-std::vector<std::string> SplitValues(const std::string& target);
-
-std::string variable_expend_ex(std::vector<std::string>& variable, std::unordered_map<std::string, std::string>& variables, ErrorCollector& errors);
-std::vector<std::string> function_argument_expended(std::vector<std::string>& args, std::unordered_map<std::string, std::string>& variables, ErrorCollector& errors);
-std::string additional_variable_expend_ex(std::string& value, std::unordered_map<std::string, std::string>& variables, ErrorCollector& errors);
-
-struct Block {
-	BlockType type;
-	std::pair<int, std::string> var_line;
-	std::vector<std::pair<int, std::string>> _lines;
+// 파싱 결과. 예전처럼 static 멤버에 쌓지 않고 값으로 돌려준다.
+struct ParseResult {
+	NodeList nodes;
+	std::unordered_set<std::string> declared_targets;
+	std::string default_target;  // 첫 번째 규칙의 타깃 (make의 기본 목표)
+	ErrorCollector errors;
 };
 
+// 논리적인 줄 목록 → AST. 파일 읽기는 makefile_reader가, 의미 검사는 SyntaxChecker가 맡는다.
 class Parser {
-private:
-	std::vector<std::shared_ptr<ASTNode>> nodes;
-	std::vector<std::pair<unsigned, std::string>> raw_file;
-	static std::unordered_set<std::string> target_names;
-	std::string default_target = "";
-	ErrorCollector ec;
 public:
-	static std::unordered_set<std::string>& GetTargets();
-	std::vector<std::shared_ptr<ASTNode>> Getnodes();
-	ErrorCollector& GetError();
-	void parsing(const std::string& filename);
-	std::vector<Block> SplitByBlock(std::vector<std::pair<unsigned, std::string>>& file);
+	explicit Parser(const DirectiveRegistry& directives);
+	ParseResult Parse(const std::vector<Line>& logical_lines) const;
 
+private:
+	enum class LineKind { Directive, Variable, Rule, Unknown };
+
+	struct RuleBlock {
+		Line head;
+		std::vector<Line> recipes;
+	};
+
+	LineKind Classify(const std::string& text) const;
+	std::unique_ptr<ASTNode> ParseDirective(const Line& line) const;
+	std::unique_ptr<ASTNode> ParseVariable(const Line& line) const;
+	std::unique_ptr<ASTNode> ParseRule(const RuleBlock& block, ParseResult& result) const;
+
+	const DirectiveRegistry& directives_;
 };

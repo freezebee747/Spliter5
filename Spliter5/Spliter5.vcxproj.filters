@@ -15,54 +15,78 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
+    <ClCompile Include="analyzer.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="read.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
-    <ClCompile Include="parser.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
-    <ClCompile Include="error.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
-    <ClCompile Include="syntax.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
-    <ClCompile Include="function.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
-    <ClCompile Include="file.cpp">
+    <ClCompile Include="context.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="directive.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="error.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="expander.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="file.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="function.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="main.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="parser.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="read.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="strutil.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="syntax.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="read.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="parser.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
     <ClInclude Include="AST.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="analyzer.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="context.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="directive.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="error.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="syntax.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="function.h">
+    <ClInclude Include="expander.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="file.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="directive.h">
+    <ClInclude Include="function.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="parser.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="read.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="strutil.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="syntax.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>

@@ -1,43 +1,19 @@
-#pragma once
+ï»¿#pragma once
 #include <string>
 #include <vector>
-#include <fstream>
-#include <sstream>
-#include <unordered_set>
 
-inline const std::unordered_set<std::string> functions = {
-	"let", "foreach", "file", "call", "value", "eval",
-	"origin", "flaver", "shell", "guile", "patsubst",
-	"subst", "filter", "sort", "word", "wordlist", "words",
-	"firstword", "lastword", "dir", "notdir", "suffix",
-	"basename", "addsuffix", "addprefix", "join", "wildcard",
-	"if"
-};
+#include "AST.h"
 
-int SeparatorCounter(const std::string& target, char sep);
+// Makefile í…ìŠ¤íŠ¸ë¥¼ 'ë…¼ë¦¬ì ì¸ ì¤„' ë‹¨ìœ„ë¡œ ë°”ê¾¼ë‹¤.
+// ìƒíƒœê°€ ì—†ëŠ” ë³€í™˜ì´ë¼ í´ë˜ìŠ¤ ëŒ€ì‹  ë„¤ì„ìŠ¤í˜ì´ìŠ¤ í•¨ìˆ˜ë¡œ ë‘”ë‹¤.
+namespace makefile_reader {
 
-// ¿ŞÂÊ °ø¹é Á¦°Å
-std::string ltrim(const std::string& s);
-// ¿À¸¥ÂÊ °ø¹é Á¦°Å
-std::string rtrim(const std::string& s);
-// ¾çÂÊ °ø¹é Á¦°Å
-std::string trim(const std::string& s);
-//ÅäÅ« ÀÌÀüÀÇ ¸¶Áö¸· ¹®ÀÚ¿¡¼­ ºÎÅÍ ÅäÅ« ±îÁöÀÇ °ø¹éÀÇ °³¼ö
-int calc_space(const std::string& str, char token, int pos);
-std::string safe_substr(const std::string& str, size_t pos, size_t count);
-std::vector<std::string> SplitSpace(const std::string& target);
-std::vector<std::string> SplitComma(const std::string& target);
-std::vector<std::string> tokenizeMakefileStyle(const std::string& input);
-bool hasWhitespace(const std::string& str);
-std::string join(const std::vector<std::string>& vec, const std::string& delimiter);
+// íŒŒì¼ì„ ì¤„ ë²ˆí˜¸ì™€ í•¨ê»˜ ì½ëŠ”ë‹¤. ì—´ì§€ ëª»í•˜ë©´ okì— falseë¥¼ ë„£ëŠ”ë‹¤.
+std::vector<Line> ReadPhysicalLines(const std::string& path, bool* ok = nullptr);
+// ë¬¸ìì—´ì„ ì¤„ ë‹¨ìœ„ë¡œ ë‚˜ëˆˆë‹¤(í…ŒìŠ¤íŠ¸ìš©).
+std::vector<Line> SplitPhysicalLines(const std::string& text);
 
-bool IsVariable(const std::string& str);
-bool IsFunction(const std::string& str);
+// ì£¼ì„ ì œê±° + ë°±ìŠ¬ë˜ì‹œ(\)ë¡œ ì´ì–´ì§„ ì¤„ í•©ì¹˜ê¸°
+std::vector<Line> ToLogicalLines(const std::vector<Line>& physical);
 
-unsigned VariableCounter(const std::string& var);
-
-std::string ReplaceVariable(std::vector<std::string>& rep, const std::string& target);
-
-std::vector<std::pair<unsigned, std::string>> ReadFileWithLineNumbers(const std::string& filename);
-std::vector<std::pair<unsigned, std::string>> JoinSplitLine(std::vector<std::pair<unsigned, std::string>>& raw);
-
+}  // namespace makefile_reader
