@@ -1,141 +1,101 @@
-#include "file.h"
+癤�#include "file.h"
+
+#include <algorithm>
+#include <filesystem>
+#include <regex>
+#include <system_error>
+
+bool IFileLookup::Exists(const std::string& filename) const {
+	return Filenames().count(filename) != 0;
+}
+
+std::vector<std::string> IFileLookup::Glob(const std::string& pattern) const {
+	std::vector<std::string> matched;
+	if (!HasGlobChars(pattern)) {
+		if (Exists(pattern)) matched.push_back(pattern);
+		return matched;
+	}
+	std::regex rx(GlobToRegex(pattern));
+	for (const auto& name : Filenames()) {
+		if (std::regex_match(name, rx)) matched.push_back(name);
+	}
+	std::sort(matched.begin(), matched.end());
+	return matched;
+}
+
+bool HasGlobChars(const std::string& text) {
+	return text.find_first_of("*?[") != std::string::npos;
+}
+
+std::string GlobToRegex(const std::string& glob) {
+	std::string regex = "^";
+	for (char c : glob) {
+		switch (c) {
+		case '*': regex += ".*"; break;
+		case '?': regex += "."; break;
+		case '[': regex += "["; break;
+		case ']': regex += "]"; break;
+		case '.': case '^': case '$': case '|': case '(': case ')':
+		case '+': case '{': case '}': case '\\':
+			regex += '\\';
+			regex += c;
+			break;
+		default:
+			regex += c;
+		}
+	}
+	regex += "$";
+	return regex;
+}
 
 DirSingleton& DirSingleton::GetInstance() {
 	static DirSingleton instance;
 	return instance;
-
 }
 
-std::string& DirSingleton::Getdir() {
-	return dir;
+void DirSingleton::SetDir(const std::string& dir) {
+	dir_ = dir;
+	NotifyObservers();
 }
 
-void DirSingleton::SetDir(const std::string& usr_dir) {
-	dir = usr_dir;
-	NotifyObserver();
+void DirSingleton::AttachObserver(IDirObserver* observer) {
+	observers_.push_back(observer);
 }
 
-void DirSingleton::AttachObserver(IDirObserver* obs) {
-	observers.push_back(obs);
+void DirSingleton::DetachObserver(IDirObserver* observer) {
+	observers_.erase(std::remove(observers_.begin(), observers_.end(), observer), observers_.end());
 }
 
-void DirSingleton::DetachObserver(IDirObserver* obs) {
-	observers.erase(std::remove(observers.begin(), observers.end(), obs), observers.end());
-}
-
-void DirSingleton::NotifyObserver() {
-	for (auto i : observers) {
-		i->OnDirChanged(this->dir);
+void DirSingleton::NotifyObservers() {
+	for (auto* observer : observers_) {
+		observer->OnDirChanged(dir_);
 	}
 }
 
-FileManagement::FileManagement() {
+FileManagement::FileManagement() : dir_(DirSingleton::GetInstance().GetDir()) {
 	DirSingleton::GetInstance().AttachObserver(this);
+	Rescan();
 }
 
 FileManagement::~FileManagement() {
 	DirSingleton::GetInstance().DetachObserver(this);
 }
 
-void FileManagement::OnDirChanged(const std::string& newDir) {
-	dir = newDir;
-	SaveFilename();
+void FileManagement::OnDirChanged(const std::string& new_dir) {
+	dir_ = new_dir;
+	Rescan();
 }
 
-//.c나 .o 파일들을 찾기 위한 메서드
-std::vector<std::string> FileManagement::find_last_of(const std::string& last) {
-	std::vector<std::string> names;
+void FileManagement::Rescan() {
+	namespace fs = std::filesystem;
+	filenames_.clear();
+	std::error_code ec;
+	valid_dir_ = fs::is_directory(dir_, ec);
+	if (!valid_dir_) return;
 
-	for (const auto& i : filenames) {
-		if (i.size() >= last.size()) {
-			if (i.substr(i.size() - last.size()) == last) {
-				names.push_back(i);
-			}
+	for (const auto& entry : fs::directory_iterator(dir_, ec)) {
+		if (entry.is_regular_file(ec)) {
+			filenames_.insert(entry.path().filename().string());
 		}
 	}
-	return names;
-}
-
-std::vector<std::string> FileManagement::glob(const std::string& pattern) {
-	if (pattern.front() == '*' && pattern.find_first_of("?[]") == std::string::npos && pattern.find('/') == std::string::npos) {
-		return find_last_of(pattern.substr(1));
-	}
-
-
-	return std::vector<std::string>();
-}
-
-void FileManagement::SaveFilename() {
-	filenames = SearchFilenames();
-}
-
-std::unordered_set<std::string> FileManagement::SearchFilenames() {
-	return SearchFilenames(dir);
-
-}
-
-std::unordered_set<std::string> FileManagement::SearchFilenames(const std::string& directory) {
-	std::unordered_set<std::string> filenames;
-
-	std::filesystem::path p = directory;
-	if (!std::filesystem::exists(p) || !std::filesystem::is_directory(p)) {
-		std::cerr << "유효하지 않은 디렉터리입니다.\n";
-		return filenames;
-	}
-
-	for (const auto& entry : std::filesystem::directory_iterator(p)) {
-		if (std::filesystem::is_regular_file(entry.status())) {
-			filenames.emplace(entry.path().filename().string());
-		}
-	}
-
-	return filenames;
-}
-
-bool FileManagement::IsExistFile(std::string filename) {
-	if (filenames.empty()) {
-		SaveFilename();
-	}
-	if (filenames.find(filename) != filenames.end()) {
-		return true;
-	}
-
-	return false;
-}
-
-std::vector<std::string> SearchFilesInWorkingDirectory() {
-	std::filesystem::path p = DirSingleton::GetInstance().Getdir();
-	std::vector<std::string> filenames;
-	if (!std::filesystem::exists(p) || !std::filesystem::is_directory(p)) {
-		std::cerr << "유효하지 않은 디렉터리입니다.\n";
-		return std::vector<std::string>();
-	}
-
-	for (const auto& entry : std::filesystem::directory_iterator(p)) {
-		if (std::filesystem::is_regular_file(entry.status())) {
-			filenames.push_back(entry.path().filename().string());
-		}
-	}
-	return filenames;
-}
-
-std::string glob_to_regex(const std::string& glob) {
-	std::string regex = "^";
-	for (size_t i = 0; i < glob.size(); ++i) {
-		char c = glob[i];
-		switch (c) {
-		case '*': regex += ".*"; break;
-		case '?': regex += "."; break;
-		case '.': regex += "\\."; break;
-		case '\\': regex += "\\\\"; break;
-		case '[': regex += "["; break;
-		case ']': regex += "]"; break;
-		default:
-			if (std::ispunct(c) && c != '[' && c != ']')
-				regex += '\\'; // escape regex special chars
-			regex += c;
-		}
-	}
-	regex += "$";
-	return regex;
 }

@@ -1,364 +1,185 @@
-#include "parser.h"
-#include "function.h"
-#include "directive.h"
+ï»¿#include "parser.h"
 
-std::unordered_set<std::string> Parser::target_names;
+#include <optional>
 
-//$(var)µéÀ» °¢°¢ ³ª´«´Ù
-//¿¹·Î "$(var1) $(var2)" ¹®ÀÚ¿­ÀÌ ÀÔ·ÂÀ¸·Î µé¾î¿Ô´Ù¸é, $(var1)°ú $(var2)·Î ³ª´©°í ±×°ÍÀÇ ÁıÇÕÀ» ¸®ÅÏÇÑ´Ù.
-//ÇÔ¼öÀÇ °æ¿ì ¸¶Áö¸· °ªÀÌ ÀÔ·Â°ªÀÌ´Ù.
-std::vector<std::string> SplitValues(const std::string& target) {
-	size_t count = 0;
-	size_t depth = 0;
-	std::vector<std::string> result;
-	std::vector<size_t> loc;
+#include "strutil.h"
 
-	while (count < target.size()) {
-		if (target[count] == '$') {
-			count = count + 2;
-			depth++;
-			loc.push_back(count);
-		}
-		else if (target[count] == ')') {
-			//$( ) º¸Á¸
-			std::string str = target.substr(loc.back() - 2, count - loc.back() + 3);
-			result.push_back(str);
-			if (!loc.empty()) {
-				loc.pop_back();
-			}
-			count++;
-		}
-		else count++;
+using strutil::SplitSpace;
+using strutil::Trim;
+
+namespace {
+
+void DeclareTargets(const std::vector<std::string>& targets, ParseResult& result) {
+	for (const auto& target : targets) {
+		result.declared_targets.insert(target);
 	}
-	return result;
-}
-
-
-std::vector<std::string>ExpendPatternRule(const std::string& pattern, const std::unordered_set<std::string>& filenames) {
-	if (SeparatorCounter(pattern, '%') != 1) {
-		return std::vector<std::string>();
-	}
-	size_t sep = pattern.find("%");
-	std::string prefix = safe_substr(pattern, 0, sep);
-	std::string suffix = pattern.substr(sep + 1, pattern.size() - sep);
-	std::vector<std::string> result;
-
-	for (const auto& i : filenames) {
-		if (i.substr(0, prefix.size()) == prefix && i.substr(i.size() - suffix.size(), suffix.size()) == suffix) {
-			result.push_back(i);
-		}
-	}
-	return result;
-}
-
-std::unordered_set<std::string>& Parser::GetTargets()
-{
-	return target_names;
-}
-
-void Parser::parsing(const std::string& filename){
-	raw_file = ReadFileWithLineNumbers(filename);
-	std::vector<std::pair<unsigned, std::string>> combine_line = JoinSplitLine(raw_file);
-	std::vector<Block> blocks = SplitByBlock(combine_line);
-
-	for (const auto& block : blocks) {
-
-		if (block.type == BlockType::directive) {
-			Directive dir;
-			dir.line = block.var_line.first;
-			std::vector<std::string> split = SplitSpace(trim(block.var_line.second));
-			dir.directive = split[0];
-			dir.arguments.insert(dir.arguments.end(), split.begin() + 1, split.end());
-			nodes.push_back(std::make_shared<Directive>(dir));
-		}
-
-		else if (block.type == BlockType::variable) {
-			Variable var;
-			var.line = block.var_line.first;
-			int Sep = block.var_line.second.find('=');
-			//Ã£Áö ¸øÇßÀ» °æ¿ì
-
-			std::string name = trim(safe_substr(block.var_line.second, 0, Sep - 1));
-			std::string value = trim(safe_substr(block.var_line.second, Sep + 1, block.var_line.second.size()));
-			var.name = name;
-			var.value = value;
-
-			if (block.var_line.second.find(":=") != std::string::npos) {
-				var.type = VariableType::Immediate;
-			}
-			else if (block.var_line.second.find("?=") != std::string::npos) {
-				var.type = VariableType::Conditional;
-			}
-			else if (block.var_line.second.find("+=") != std::string::npos) {
-				var.type = VariableType::Append;
-			}
-			else var.type = VariableType::Simple;
-			nodes.push_back(std::make_shared<Variable>(var));
-		}
-		else if (block.type == BlockType::rule) {
-			std::string first_line = block._lines[0].second;
-			if (SeparatorCounter(first_line, ':') == 1) {
-				size_t colon_pos = first_line.find(':');
-
-				if (trim(safe_substr(first_line, colon_pos + 1, first_line.size() - colon_pos - 1)) == "") {
-					Phony_Target pt;
-					std::string phony_name = trim(safe_substr(first_line, 0, colon_pos));
-					//µğÆúÆ® Å¸°Ù ¼³Á¤
-					if (default_target == "") {
-						default_target = phony_name;
-					}
-
-					std::vector<std::pair<unsigned, std::string>> phony_recipe;
-					for (size_t i = 1; i < block._lines.size(); i++) {
-						phony_recipe.push_back({ block._lines[i].first,  trim(block._lines[i].second) });
-					}
-					pt.line = block._lines[0].first;
-					pt.target = phony_name;
-					nodes.push_back(std::make_shared<Phony_Target>(pt));
-					continue;
-				}
-				else if (first_line.find("%") != std::string::npos) {
-					Pattern_Rule pr;
-					pr.line = block._lines[0].first;
-					pr.target_pattern = trim(safe_substr(first_line, 0, colon_pos));
-
-					size_t intTemp = (first_line.find(';') != std::string::npos) ? first_line.find(';') : first_line.size();
-
-					pr.prerequisite_pattern = trim(safe_substr(first_line, colon_pos + 1, intTemp - colon_pos - 1));
-
-					if (first_line.find(';') != std::string::npos) {
-						std::string rec = safe_substr(first_line, intTemp, first_line.size() - intTemp);
-						if (rec != "") {
-							pr.recipes.push_back({ block._lines[0].first, rec });
-						}
-					}
-
-					for (size_t i = 1; i < block._lines.size(); i++) {
-						pr.recipes.push_back({ block._lines[i].first, trim(block._lines[i].second) });
-					}
-					nodes.push_back(std::make_shared<Pattern_Rule>(pr));
-					continue;
-				}
-				else {
-					Explicit_Rule ex;
-
-					ex.line = block._lines[0].first;
-					ex.target = SplitSpace(trim(safe_substr(first_line, 0, colon_pos)));
-					std::vector<std::string> _targets = SplitSpace(trim(safe_substr(first_line, 0, colon_pos)));
-					//µğÆúÆ® Å¸°Ù ¼³Á¤
-					if (default_target == "") {
-						default_target = ex.target[0];
-					}
-
-					for (const auto& name : _targets) {
-						target_names.emplace(name);  
-					}
-					size_t intTemp = (first_line.find(';') != std::string::npos) ? first_line.find(';') : first_line.size();
-					
-					ex.prerequisite = SplitSpace(trim(safe_substr(first_line, colon_pos + 1, intTemp - colon_pos - 1)));
-
-					if (first_line.find(';') != std::string::npos) {
-						std::string rec = safe_substr(first_line, intTemp, first_line.size() - intTemp);
-						if (rec != "") {
-							ex.recipes.push_back({ block._lines[0].first, rec });
-						}
-					}
-					for (size_t i = 1; i < block._lines.size(); i++) {
-						ex.recipes.push_back({ block._lines[i].first, trim(block._lines[i].second) });
-					}
-					nodes.push_back(std::make_shared<Explicit_Rule>(ex));
-					continue;
-				}
-			}
-			else if (SeparatorCounter(first_line, ':') == 2) {
-				Static_Pattern_Rule spr;
-				int colon_pos = first_line.find(':');
-				spr.target = SplitSpace(trim(safe_substr(first_line, 0, colon_pos)));
-
-				int next_colon = first_line.find(':', colon_pos + 1);
-
-				spr.target_pattern = trim(safe_substr(first_line, colon_pos + 1, next_colon - colon_pos - 1));
-				spr.prerequisite_pattern = trim(safe_substr(first_line, next_colon + 1, first_line.size() - next_colon - 1));
-
-				nodes.push_back(std::make_shared<Static_Pattern_Rule>(spr));
-			}
-		}
+	if (result.default_target.empty() && !targets.empty()) {
+		result.default_target = targets.front();
 	}
 }
 
-std::vector<Block> Parser::SplitByBlock(std::vector<std::pair<unsigned, std::string>>& file){
-	std::vector<Block> blocks;
-	bool recipe_flag = false;
+}  // namespace
 
-	// ¹é½½·¡½Ã·Î ÀÌ¾îÁö´Â ¶óÀÎµéÀ» ÇÕÄ¡±â À§ÇÑ ÄÚµå
-	std::vector<std::pair<unsigned, std::string>> combinedLines;
-	for (size_t i = 0; i < raw_file.size(); ++i) {
-		const auto& [lineNum, lineText] = raw_file[i];
-		std::string combined = lineText;
-		unsigned originalLine = lineNum;
+Parser::Parser(const DirectiveRegistry& directives) : directives_(directives) {}
 
-		while (!combined.empty() && combined.back() == '\\') {
-			combined.pop_back();
-			if (++i < raw_file.size()) {
-				combined += trim(raw_file[i].second);
+ParseResult Parser::Parse(const std::vector<Line>& logical_lines) const {
+	ParseResult result;
+	std::optional<RuleBlock> rule;
+
+	auto flush_rule = [&]() {
+		if (!rule) return;
+		if (auto node = ParseRule(*rule, result)) result.nodes.push_back(std::move(node));
+		rule.reset();
+	};
+
+	for (const Line& line : logical_lines) {
+		bool is_recipe = !line.text.empty() && line.text[0] == '\t';
+		std::string text = Trim(line.text);
+		if (text.empty()) continue;
+
+		//tabìœ¼ë¡œ ì‹œì‘í•˜ëŠ” ì¤„ì€ ì§ì „ ê·œì¹™ì˜ recipeë‹¤.
+		if (is_recipe) {
+			if (rule) {
+				rule->recipes.push_back({ line.number, text });
 			}
 			else {
-				break;
-			}
-		}
-		combinedLines.emplace_back(originalLine, combined);
-	}
-
-	std::unique_ptr<Block> block;
-	block.reset();
-
-	for (auto it = combinedLines.begin(); it != combinedLines.end(); ++it) {
-		const auto& [line, str] = *it;
-
-		//¸¸ÀÏ ºó ¶óÀÎÀÌ¸é ÀÏ´Ü ³Ñ±ä´Ù.
-		if (str.empty())continue;
-	
-		//Áö½ÃÀÚ Ã³¸®
-		//¸¸ÀÏ tabÀ¸·Î ½ÃÀÛÇÏÁö ¾ÊÀ¸¸é¼­, ½ºÆäÀÌ½º¸¦ ±âÁØÀ¸·Î ³ª´©¾úÀ» ¶§
-		//Ã¹¹øÂ° ¹®ÀÚ¿­ÀÌ Áö½ÃÀÚ ÁıÇÕ¿¡ ÀÖÀ¸¸é Áö½ÃÀÚ·Î Ã³¸®ÇÑ´Ù.
-		{
-			std::vector<std::string> temp = SplitSpace(trim(str));
-			if (directive_set.find(temp[0]) != directive_set.end()) {
-				block = std::make_unique<Block>();
-				block->type = BlockType::directive;
-				block->var_line = { line, str };
-				blocks.push_back(*block);
-				block.reset();
-				continue;
-			}
-		}
-
-		//º¯¼ö Ã³¸®
-		//¸¸ÀÏ tabÀ¸·Î ½ÃÀÛÇÏÁö ¾ÊÀ¸¸é¼­ = °¡ Æ÷ÇÔµÇ¾îÀÖ´Ù¸é º¯¼öÀÌ¹Ç·Î ÇÑ ºí·ÏÀ¸·Î Ã³¸®ÇÑ´Ù..
-		//ÀÏ´Ü Áï½Ã È®Àå º¯¼öÀÌ´ø ´©Àû º¯¼öÀÌ´ø º¯¼ö·Î Ãë±ŞÇÏÀÚ
-		if (str.find("=") != std::string::npos && str[0] != '\t') {
-			block = std::make_unique<Block>();
-			block->type = BlockType::variable;
-			block->var_line = { line, str };
-			blocks.push_back(*block);
-			block.reset();
-			continue;
-		}
-
-		//±ÔÄ¢ Ã³¸®
-		//¸¸ÀÏ tabÀ¸·Î ½ÃÀÛÇÏÁö ¾ÊÀ¸¸é¼­ : °¡ Æ÷ÇÔµÇ¾î ÀÖ´Ù¸é ±ÔÄ¢ÀÌ¹Ç·Î ±× ºí·ÏÀ» ÀúÀåÇÑ´Ù.
-		//´ÙÀ½ ¹®ÀåÀÌ tabÀ¸·Î ½ÃÀÛÇÏÁö ¾ÊÀ» ¶§ ±îÁö recipe ·Î Ãë±ŞÇÑ´Ù.
-		//tabÀÌ Æ÷ÇÔµÈ ºó ÁÙÀº ºí·Ï¿¡ Æ÷ÇÔÇÏ°í, tabÀÌ Æ÷ÇÔµÇÁö ¾ÊÀº ºó ÁÙÀº ¹ö¸°´Ù.
-		if (str.find(":") != std::string::npos && str[0] != '\t') {
-			block = std::make_unique<Block>();
-			block->type = BlockType::rule;
-			block->_lines.push_back({ line, str });
-		}
-		if (block && str[0] == '\t') {
-			block->_lines.push_back({ line, str });
-			//¸¸ÀÏ ´ÙÀ½ ¶óÀÎÀÌ(ºó ¶óÀÎÀº Ã¹¹øÂ° Á¶°Ç¹®¿¡¼­ ¹ö·ÁÁø´Ù.) ÅÇÀ¸·Î ½ÃÀÛÇÏÁö ¾Ê´Â´Ù¸é block¸¦ ÀúÀåÇÑ ÈÄ Å¬¸®¾îÇÑ´Ù.
-			auto next_it = std::next(it);
-			if (next_it != combinedLines.end() && next_it->second[0] != '\t') {
-				blocks.push_back(*block);
-				block.reset();
+				result.errors.Add("E001", line.number, Severity::Error);  // ê·œì¹™ ì—†ì´ recipeê°€ ë‚˜ì˜´
 			}
 			continue;
 		}
-	}
 
-	if (block) {
-		blocks.push_back(*block);
-	}
-	return blocks;
-}
-
-
-std::vector<std::shared_ptr<ASTNode>> Parser::Getnodes(){
-	return nodes;
-}
-
-ErrorCollector& Parser::GetError(){
-	return ec;
-}
-
-////////////////////////////////////////////
-///////////////////////////////////////////
-
-std::string variable_expend_ex(std::vector<std::string>& variable, std::unordered_map<std::string, std::string>& variables, ErrorCollector& errors) {
-
-	std::string result;
-	for (const auto& var : variable) {
-		if (IsFunction(var)) {
-			//1. ÇÔ¼ö ÀÌ¸§°ú ¸Å°³º¯¼ö ºĞ¸®
-			//1.1 ´Ş·¯ °ıÈ£ Á¦°Å
-			std::string temp = var.substr(2, var.size() - 3);
-			//1.2 ÇÔ¼ö ÀÌ¸§ ÃßÃâ
-			size_t space_num = temp.find(" ");
-			std::string name = temp.substr(0, space_num);
-			//1.3 ÇÔ¼ö ¸Å°³º¯¼ö ÃßÃâ
-			std::string args_string = temp.substr(space_num, temp.size() - space_num);
-			std::vector<std::string> args = SplitComma(args_string);
-			//1.4 º¯¼ö È®Àå
-			args = function_argument_expended(args, variables, errors);
-
-			//1.5 ÇÔ¼ö È®Àå
-			result = result + Active_function(name, args);
+		flush_rule();
+		switch (Classify(text)) {
+		case LineKind::Directive:
+			result.nodes.push_back(ParseDirective({ line.number, text }));
+			break;
+		case LineKind::Variable:
+			result.nodes.push_back(ParseVariable({ line.number, text }));
+			break;
+		case LineKind::Rule:
+			rule = RuleBlock{ { line.number, text }, {} };
+			break;
+		case LineKind::Unknown:
+			result.errors.Add("E001", line.number, Severity::Error);
+			break;
 		}
-		else if (IsVariable(var)) {
-			std::string temp = var.substr(2, var.size() - 3);
-			auto it = variables.find(temp);
-			if (it != variables.end()) {
-				temp = additional_variable_expend_ex(it->second, variables, errors);
-				result = result + temp;
-			}
-		}
-		else result = result + var;
 	}
-
+	flush_rule();
 	return result;
 }
 
-std::vector<std::string>function_argument_expended(std::vector<std::string>& args, std::unordered_map<std::string, std::string>& variables, ErrorCollector& errors) {
-	std::vector<std::string> result;
-	for (const auto& arg : args) {
-		if (IsFunction(arg)) {
-			//1. ÇÔ¼ö ÀÌ¸§°ú ¸Å°³º¯¼ö ºĞ¸®
-				//1.1 ´Ş·¯ °ıÈ£ Á¦°Å
-			std::string temp = arg.substr(2, arg.size() - 3);
-			//1.2 ÇÔ¼ö ÀÌ¸§ ÃßÃâ
-			size_t space_num = temp.find(" ");
-			std::string name = temp.substr(0, space_num);
-			//1.3 ÇÔ¼ö ¸Å°³º¯¼ö ÃßÃâ
-			std::string args_string = temp.substr(space_num, temp.size() - space_num);
-			std::vector<std::string> _args = SplitComma(args_string);
-			//1.4 ÇÔ¼ö ¸Å°³º¯¼ö È®Àå
-			_args = function_argument_expended(_args, variables, errors);
+Parser::LineKind Parser::Classify(const std::string& text) const {
+	if (directives_.IsDirective(SplitSpace(text).front())) return LineKind::Directive;
 
-			result.push_back(Active_function(name, _args));
-		}
-		else if (IsVariable(arg)) {
-			std::string temp = arg.substr(2, arg.size() - 3);
-			auto it = variables.find(temp);
-			if (it != variables.end()) {
-				temp = it->second;
-				temp = additional_variable_expend_ex(temp, variables, errors);
-				result.push_back(temp);
-			}
-		}
-		else result.push_back(arg);
-	}
-	return result;
+	//':'ì™€ '=' ì¤‘ ë¨¼ì € ë‚˜ì˜¤ëŠ” ìª½ìœ¼ë¡œ íŒë‹¨í•œë‹¤.
+	//ì˜ˆì „ì—ëŠ” '='ê°€ ì–´ë””ì—ë“  ìˆìœ¼ë©´ ë³€ìˆ˜ë¡œ ë´¤ê¸° ë•Œë¬¸ì— "a: b ; CC=gcc" ê°™ì€ ê·œì¹™ì„ ë³€ìˆ˜ë¡œ ì˜¤ì¸í–ˆë‹¤.
+	size_t pos = text.find_first_of(":=");
+	if (pos == std::string::npos) return LineKind::Unknown;
+	if (text[pos] == '=') return LineKind::Variable;                       // =, ?=, +=
+	if (text.compare(pos, 2, ":=") == 0) return LineKind::Variable;        // :=
+	if (text.compare(pos, 3, "::=") == 0) return LineKind::Variable;       // ::=
+	return LineKind::Rule;
 }
 
-std::string additional_variable_expend_ex(std::string& value, std::unordered_map<std::string, std::string>& variables, ErrorCollector& errors) {
-	if (value[0] == '$' && value[1] == '(' && value.back() == ')') {
-		std::string temp = value.substr(2, value.size() - 3);
-		auto it = variables.find(temp);
-		if (it != variables.end()) {
-			value = it->second;
-			temp = additional_variable_expend_ex(value, variables, errors);
-			return temp;
+std::unique_ptr<ASTNode> Parser::ParseDirective(const Line& line) const {
+	auto node = std::make_unique<Directive>();
+	node->line = line.number;
+	std::vector<std::string> words = SplitSpace(line.text);
+	node->name = words.front();
+	node->arguments.assign(words.begin() + 1, words.end());
+	return node;
+}
+
+std::unique_ptr<ASTNode> Parser::ParseVariable(const Line& line) const {
+	auto node = std::make_unique<Variable>();
+	node->line = line.number;
+
+	const std::string& text = line.text;
+	size_t equal = text.find('=');
+	size_t name_end = equal;
+	node->type = VariableType::Simple;
+	if (equal > 0) {
+		switch (text[equal - 1]) {
+		case ':':
+			node->type = VariableType::Immediate;
+			name_end = equal - 1;
+			if (name_end > 0 && text[name_end - 1] == ':') --name_end;  // ::=
+			break;
+		case '?':
+			node->type = VariableType::Conditional;
+			name_end = equal - 1;
+			break;
+		case '+':
+			node->type = VariableType::Append;
+			name_end = equal - 1;
+			break;
+		default:
+			break;
 		}
 	}
-	return value;
+	node->name = Trim(text.substr(0, name_end));
+	node->value = Trim(text.substr(equal + 1));
+	return node;
+}
+
+std::unique_ptr<ASTNode> Parser::ParseRule(const RuleBlock& block, ParseResult& result) const {
+	const std::string& head_text = block.head.text;
+	unsigned line = block.head.number;
+
+	//"target: prereq ; recipe" í˜•íƒœ: ';' ë’¤ëŠ” recipeë‹¤.
+	size_t semicolon = head_text.find(';');
+	std::string head = head_text.substr(0, semicolon);
+
+	std::vector<Line> recipes;
+	if (semicolon != std::string::npos) {
+		std::string inline_recipe = Trim(head_text.substr(semicolon + 1));
+		if (!inline_recipe.empty()) recipes.push_back({ line, inline_recipe });
+	}
+	recipes.insert(recipes.end(), block.recipes.begin(), block.recipes.end());
+
+	size_t colon_count = strutil::CountChar(head, ':');
+	size_t colon = head.find(':');
+
+	if (colon_count == 1) {
+		std::string target_part = Trim(head.substr(0, colon));
+		std::string prereq_part = Trim(head.substr(colon + 1));
+
+		if (head.find('%') != std::string::npos) {
+			auto node = std::make_unique<PatternRule>();
+			node->line = line;
+			node->recipes = recipes;
+			node->target_pattern = target_part;
+			node->prerequisite_pattern = prereq_part;
+			return node;
+		}
+		if (prereq_part.empty()) {
+			auto node = std::make_unique<PhonyTarget>();
+			node->line = line;
+			node->recipes = recipes;
+			node->target = target_part;
+			DeclareTargets({ target_part }, result);
+			return node;
+		}
+		auto node = std::make_unique<ExplicitRule>();
+		node->line = line;
+		node->recipes = recipes;
+		node->targets = SplitSpace(target_part);
+		node->prerequisites = SplitSpace(prereq_part);
+		DeclareTargets(node->targets, result);
+		return node;
+	}
+
+	if (colon_count == 2) {
+		size_t next_colon = head.find(':', colon + 1);
+		auto node = std::make_unique<StaticPatternRule>();
+		node->line = line;
+		node->recipes = recipes;
+		node->targets = SplitSpace(head.substr(0, colon));
+		node->target_pattern = Trim(head.substr(colon + 1, next_colon - colon - 1));
+		node->prerequisite_pattern = Trim(head.substr(next_colon + 1));
+		return node;
+	}
+
+	result.errors.Add("E001", line, Severity::Error);
+	return nullptr;
 }

@@ -1,288 +1,199 @@
-#include "syntax.h"
+ï»¿#include "syntax.h"
 
-std::unordered_map<std::string, std::string> SyntaxChecker::variable_map;
+#include <cctype>
+#include <optional>
+#include <regex>
 
-SyntaxChecker::SyntaxChecker(std::vector<std::shared_ptr<ASTNode>> node, ErrorCollector& _ec) {
-	nodes = node;
-    ec = _ec;
-	fm.SaveFilename();
-}
+#include "strutil.h"
 
-const std::unordered_map<std::string, std::string>& SyntaxChecker::GetVariables(){
-	return variable_map;
-}
+SyntaxChecker::SyntaxChecker(MakefileContext& context, ErrorCollector& errors,
+							 const FunctionRegistry& functions, const DirectiveRegistry& directives,
+							 IncludeHandler include)
+	: context_(context),
+	  errors_(errors),
+	  expander_(context.variables, functions, context.files),
+	  directives_(directives),
+	  include_(std::move(include)) {}
 
-void SyntaxChecker::SyntaxCheck(){
+void SyntaxChecker::Check(const NodeList& nodes) {
 	for (const auto& node : nodes) {
-        if (auto var = dynamic_cast<Variable*>(node.get())) {
-            VariableCheck(*var);
-        }
-		else if (auto dir = dynamic_cast<Directive*>(node.get())) {
-			DirectiveChecker(*dir);
-		}
-        else if (auto ex = dynamic_cast<Explicit_Rule*>(node.get())) {
-            ExplicitRuleCheck(*ex);
-        }
-        else if (auto pattern = dynamic_cast<Pattern_Rule*>(node.get())) {
-			PatternRuleCheck(*pattern);
-        }
-		else if (auto spattern = dynamic_cast<Static_Pattern_Rule*>(node.get())) {
-			StaticPatternRuleCheck(*spattern);
-		}
+		node->Accept(*this);
 	}
 }
 
-void SyntaxChecker::VariableCheck(Variable& var){
-	//º¯¼ö ÀÌ¸§ °Ë»ç
-	for (int i = 0; i < var.name.size(); i++) {
-		if (!((var.name[i] >= 'a' && var.name[i] <= 'z') ||
-			(var.name[i] >= 'A' && var.name[i] <= 'Z') ||
-			var.name[i] == '_')) {
-			//¿¡·¯ Ã³¸®
-			ec.AddError("E011", var.line, Severity::Error);
-			return;
-		}
+void SyntaxChecker::Visit(const Directive& node) {
+	DirectiveCall call{ node, ExpandWords(node.arguments), nullptr };
+	if (include_) {
+		call.include = [this, &node](const std::string& path, bool optional) {
+			include_(path, node.line, optional);
+		};
 	}
+	directives_.Run(call);
+}
 
-	//º¯¼ö ÀÌ¸§ Áßº¹ °Ë»ç
-	auto finder = variable_map.find(var.name);
-	if (finder != variable_map.end()) {
-		//¿¡·¯ Ã³¸®
-		ec.AddError("E012", var.line, Severity::Error);
+void SyntaxChecker::Visit(const Variable& node) {
+	//ë³€ìˆ˜ ì´ë¦„ ê²€ì‚¬
+	if (!IsValidVariableName(node.name)) {
+		errors_.Add("E011", node.line, Severity::Error);
 		return;
 	}
 
-	//Áï½Ã È®Àå º¯¼ö Ã³¸®
-	if (var.type == VariableType::Immediate) {
-		variable_map.erase(var.name);
-		std::vector<std::string> temp;
-		temp.push_back(var.name);
-		std::string value = variable_expend_ex(temp, variable_map, ec);
-		variable_map.emplace(var.name, value);
-	}
+	const VariableEntry* existing = context_.variables.Find(node.name);
+	switch (node.type) {
+	case VariableType::Conditional:  // ?= : ì´ë¯¸ ìˆìœ¼ë©´ ë¬´ì‹œ
+		if (!existing) DefineRecursive(node.name, node.value, node.line);
+		return;
 
-	//º¯¼ö ¼øÈ¯ °Ë»ç
-	{
-		std::vector<std::string> name_stack;
-		name_stack.push_back(var.name);
-		std::string checker = var.value;
-
-		variable_map.emplace(var.name, var.value);
-
-		while (true) {
-			if (!(checker.size() >= 4 && checker[0] == '$' && checker[1] == '(' && checker.back() == ')')) break;
-			checker = checker.substr(2, checker.size() - 3);
-			auto finder = variable_map.find(checker);
-			if (finder != variable_map.end()) {
-				std::string tester = finder->second.substr(2, finder->second.size() - 3);
-				auto next = std::find(name_stack.begin(), name_stack.end(), tester);
-				if (next != name_stack.end()) {
-					ec.AddError("E013", var.line, Severity::Error);
-					variable_map.erase(var.name);
-					return;
-				}
-				name_stack.push_back(checker);
-				checker = finder->second;
-			}
+	case VariableType::Append:  // += : ê¸°ì¡´ ê°’ ë’¤ì— ë¶™ì¸ë‹¤ (ì¤‘ë³µ ì •ì˜ ì•„ë‹˜)
+		if (!existing) {
+			DefineRecursive(node.name, node.value, node.line);
 		}
-	}
-}
-
-void SyntaxChecker::DirectiveChecker(Directive& dir){
-	//³ªÁß¿¡ Á¤ÀÇ
-}
-
-void SyntaxChecker::ExplicitRuleCheck(Explicit_Rule& ex){
-	Explicit_ex e_x;
-	std::vector<Explicit_ex> ex_checker;
-	std::vector<std::string> variables_temp;
-
-	for (auto& i : ex.target) {
-		//targetÀº Áï½ÃÈ®Àå
-		std::vector<std::string> temp;
-		std::string temp_string;
-		temp.push_back(i);
-		temp_string = variable_expend_ex(temp, variable_map, ec);
-		temp = SplitSpace(trim(temp_string));
-		variables_temp.insert(variables_temp.end(), temp.begin(), temp.end());
-	}
-	ex.target = variables_temp;
-
-	variables_temp.clear();
-	for (auto& i : ex.prerequisite) {
-		//prerequisite´Â Áï½Ã È®Àå
-		std::vector<std::string> temp;
-		std::string temp_string;
-		temp.push_back(i);
-		temp_string = variable_expend_ex(temp, variable_map, ec);
-		temp = SplitSpace(trim(temp_string));
-		variables_temp.insert(variables_temp.end(), temp.begin(), temp.end());
-	}
-	ex.prerequisite = variables_temp;
-
-	variables_temp.clear();
-
-	if (ex.target.size() > 1) {
-		for (const auto& target : ex.target) {
-			e_x.line = ex.line;
-			e_x.target = target;
-			e_x.prerequisite = ex.prerequisite;
-			e_x.recipes = ex.recipes;
-			ex_checker.push_back(e_x);
-		}
-	}
-	else if (ex.target.size() == 1) {
-		e_x.line = ex.line;
-		e_x.target = ex.target[0];
-		e_x.prerequisite = ex.prerequisite;
-		e_x.recipes = ex.recipes;
-		ex_checker.push_back(e_x);
-	}
-
-	for (const auto& ex_rule : ex_checker) {
-
-		size_t finder = ex_rule.target.find('*');
-		if (finder != std::string::npos) {
-			ec.AddError("E101", ex.line, Severity::Error);
-			continue;
-		}
-
-		finder = ex_rule.target.find_first_of("$=");
-		if (finder != std::string::npos) {
-			//target¿¡ $, = °¡ ¾²¿´À¸¸é ÁÖÀÇ¸¦ ÁÜ(¿¡·¯°¡ ¾Æ´Ô)
-			ec.AddError("E102", ex_rule.line, Severity::Warning);
-		}
-
-		//4. targetÀÌ¸§ÀÌ Áßº¹µÇ¾ú´Â°¡?
-		// Áßº¹ °Ë»ç ½Ã È®ÀåµÈ ÀÌ¸§ ±âÁØ
-		if (target_map.find(ex_rule.target) != target_map.end()) {
-			ec.AddError("E103", ex.line, Severity::Error);
+		else if (existing->flavor == Flavor::Simple) {
+			std::string appended = strutil::Trim(existing->value + " " + expander_.Expand(node.value));
+			context_.variables.Set(node.name, { appended, Flavor::Simple });
 		}
 		else {
-			target_map.insert(ex_rule.target);
+			DefineRecursive(node.name, strutil::Trim(existing->value + " " + node.value), node.line);
 		}
+		return;
 
-
-		for (auto& preq : ex_rule.prerequisite) {
-			std::unordered_set<std::string>& targets = Parser::GetTargets();
-			
-			//2. ¿ÍÀÏµåÄ«µå°¡ »ç¿ëµÇ¾ú´Â°¡?
-			size_t finder = preq.find('*');
-			bool matched = false;
-			std::regex rx(glob_to_regex(preq));
-
-			for (const auto& t : targets) {
-				if (std::regex_match(t, rx)) {
-					matched = true;
-					break;
-				}
-			}
-			if (!matched) {
-				// ÆÄÀÏ ½Ã½ºÅÛ¿¡¼­ °Ë»ö
-				std::unordered_set<std::string> files = fm.SearchFilenames();
-				for (const auto& f : files) {
-					if (std::regex_match(f, rx)) {
-						matched = true;
-						break;
-					}
-				}
-			}
-			if (!matched) {
-				ec.AddError("E151", ex.line, Severity::Error);  // ¾Æ¹«°Íµµ ¸ÅÄª ¾È µÇ¸é ÁøÂ¥·Î ¿¡·¯
-			}
-
+	case VariableType::Simple:
+	case VariableType::Immediate:
+		//ë³€ìˆ˜ ì´ë¦„ ì¤‘ë³µ ê²€ì‚¬
+		if (existing) {
+			errors_.Add("E012", node.line, Severity::Error);
+			return;
 		}
-		//·¹½ÃÇÇ °Ë»ç
-	}
-}
-
-void SyntaxChecker::PatternRuleCheck(Pattern_Rule& pr) {
-	std::vector<std::string> prerequisites;
-	if (pr.prerequisite_pattern.find("%") != std::string::npos) {
-		prerequisites = ExpendPatternRule(pr.prerequisite_pattern, fm.SearchFilenames());
-	}
-	if (pr.target_pattern.find("%") == std::string::npos) {
-		ec.AddError("E201", pr.line, Severity::Error);
-		return;
-	}
-	if (SeparatorCounter(pr.target_pattern, '%') != 1) {
-		ec.AddError("E202", pr.line, Severity::Error);
-		return;
-	}
-
-	size_t point = pr.prerequisite_pattern.find("%");
-	std::string prefix = pr.prerequisite_pattern.substr(0, point);
-	std::string suffix = pr.prerequisite_pattern.substr(point+1, pr.prerequisite_pattern.size() - point);
-	for (const auto& preq : prerequisites) {
-
-		std::string target = pr.target_pattern;
-		Explicit_Rule ex;
-		std::string raw_preq = preq.substr(prefix.size(), preq.find(suffix) - prefix.size());
-		target.replace(target.find("%"), 1, raw_preq);
-		ex.target.push_back(target);
-		ex.prerequisite.push_back(preq);
-		ex.recipes = pr.recipes;
-		ExplicitRuleCheck(ex);
-	}
-}
-
-void SyntaxChecker::StaticPatternRuleCheck(Static_Pattern_Rule& spr){
-	std::vector<std::string> targets;
-	for (const auto& target : spr.target) {
-		if (target[0] == '$' && target[1] == '(' && target[target.size()] == ')') {
-			std::vector<std::string> variable;
-			variable.push_back(target);
-			std::string expend = variable_expend_ex(variable, variable_map, ec);
-			variable = SplitSpace(trim(expend));
-			targets.insert(targets.end(), variable.begin(), variable.end());
+		if (node.type == VariableType::Immediate) {
+			//ì¦‰ì‹œ í™•ì¥ ë³€ìˆ˜ëŠ” ì •ì˜ ì‹œì ì— ê°’ì„ í™•ì¥í•´ì„œ ì €ì¥í•œë‹¤
+			context_.variables.Set(node.name, { strutil::Trim(expander_.Expand(node.value)), Flavor::Simple });
 		}
-		else targets.push_back(target);
-	}
-	if (spr.target_pattern.find("%") == std::string::npos) {
-		ec.AddError("E201", spr.line, Severity::Error);
+		else {
+			DefineRecursive(node.name, node.value, node.line);
+		}
 		return;
 	}
-	if (SeparatorCounter(spr.prerequisite_pattern, '%') != 1) {
-		return;
-	}
-	size_t point = spr.target_pattern.find("%");
-	std::string prefix = spr.target_pattern.substr(0, point);
-	std::string suffix = spr.target_pattern.substr(point + 1, spr.target_pattern.size() - point);
-	for (const auto& t : targets) {
-		std::string preq = spr.prerequisite_pattern;
-		Explicit_Rule ex;
-		std::string raw_target = t.substr(prefix.size(), t.find(suffix) - prefix.size());
-		ex.target.push_back(t);
-		preq.replace(preq.find('%'), 1, raw_target);
-		ex.prerequisite.push_back(preq);
-		ex.recipes = spr.recipes;
-		ExplicitRuleCheck(ex);
-	}
 }
 
-void SyntaxChecker::IncludeOtherSyntax(SyntaxChecker& syn, const std::string& filename){
-	std::unordered_set<std::string> outer_target;
-	target_map.insert(std::move(outer_target.begin()), std::move(outer_target.end()));
-	syn.ec.SetExternalErrors(filename);
-	ec.AppendErrorCollector(syn.GetErrorCollector());
-}
+// ì¬ê·€ í™•ì¥ ë³€ìˆ˜ë¥¼ ì •ì˜í•˜ê³ , ìˆœí™˜ ì°¸ì¡°ê°€ ìƒê¸°ë©´ ì •ì˜ë¥¼ ë˜ëŒë¦°ë‹¤.
+void SyntaxChecker::DefineRecursive(const std::string& name, const std::string& value, unsigned line) {
+	const VariableEntry* existing = context_.variables.Find(name);
+	std::optional<VariableEntry> previous;
+	if (existing) previous = *existing;
 
-void SyntaxChecker::IncludeOtherSyntax(SyntaxChecker& syn){
-	std::unordered_set<std::string> outer_target;
-	target_map.insert(std::move(outer_target.begin()), std::move(outer_target.end()));
-	ec.AppendErrorCollector(syn.GetErrorCollector());
-}
-
-ErrorCollector& SyntaxChecker::GetErrorCollector(){
-	return ec;
-}
-
-void SyntaxChecker::PrintErrors(){
-	std::vector<Error> err = ec.GetAll();
-	std::string messages;
-	for (const auto& i : err) {
-		messages = ErrorMessage::GetInstance().GetMessage(i.code);
-		std::cout << i.line_number << ". [" << i.code << "] : " << messages << "\n";
+	context_.variables.Set(name, { value, Flavor::Recursive });
+	expander_.Expand("$(" + name + ")");
+	if (expander_.CycleDetected()) {
+		errors_.Add("E013", line, Severity::Error);
+		if (previous) {
+			context_.variables.Set(name, *previous);
+		}
+		else {
+			context_.variables.Erase(name);
+		}
 	}
 }
 
+bool SyntaxChecker::IsValidVariableName(const std::string& name) {
+	if (name.empty()) return false;
+	if (!(std::isalpha(static_cast<unsigned char>(name[0])) || name[0] == '_')) return false;
+	for (char c : name) {
+		if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_')) return false;
+	}
+	return true;
+}
+
+void SyntaxChecker::Visit(const ExplicitRule& node) {
+	//targetê³¼ prerequisiteëŠ” ì¦‰ì‹œ í™•ì¥
+	CheckTargets(ExpandWords(node.targets), node.line);
+	CheckPrerequisites(ExpandWords(node.prerequisites), node.line);
+}
+
+void SyntaxChecker::Visit(const PhonyTarget& node) {
+	CheckTargets(ExpandWords(node.target), node.line);
+}
+
+void SyntaxChecker::Visit(const PatternRule& node) {
+	CheckTargetPattern(strutil::Trim(expander_.Expand(node.target_pattern)), node.line);
+}
+
+void SyntaxChecker::Visit(const StaticPatternRule& node) {
+	std::string target_pattern = strutil::Trim(expander_.Expand(node.target_pattern));
+	if (!CheckTargetPattern(target_pattern, node.line)) return;
+
+	std::vector<std::string> prerequisite_patterns = ExpandWords(node.prerequisite_pattern);
+	for (const auto& target : ExpandWords(node.targets)) {
+		std::string stem;
+		if (!strutil::MatchPattern(target_pattern, target, &stem)) {
+			errors_.Add("E203", node.line, Severity::Error);
+			continue;
+		}
+		std::vector<std::string> prerequisites;
+		for (const auto& pattern : prerequisite_patterns) {
+			prerequisites.push_back(strutil::ReplacePercent(pattern, stem));
+		}
+		CheckTargets({ target }, node.line);
+		CheckPrerequisites(prerequisites, node.line);
+	}
+}
+
+bool SyntaxChecker::CheckTargetPattern(const std::string& pattern, unsigned line) {
+	size_t percent_count = strutil::CountChar(pattern, '%');
+	if (percent_count == 0) {
+		errors_.Add("E201", line, Severity::Error);
+		return false;
+	}
+	if (percent_count > 1) {
+		errors_.Add("E202", line, Severity::Error);
+		return false;
+	}
+	return true;
+}
+
+std::vector<std::string> SyntaxChecker::ExpandWords(const std::vector<std::string>& words) {
+	return ExpandWords(strutil::Join(words, " "));
+}
+
+std::vector<std::string> SyntaxChecker::ExpandWords(const std::string& text) {
+	return strutil::SplitSpace(expander_.Expand(text));
+}
+
+void SyntaxChecker::CheckTargets(const std::vector<std::string>& targets, unsigned line) {
+	for (const auto& target : targets) {
+		if (target.find('*') != std::string::npos) {
+			errors_.Add("E101", line, Severity::Error);
+			continue;
+		}
+		//targetì— $, = ê°€ ì“°ì˜€ìœ¼ë©´ ì£¼ì˜ë¥¼ ì¤Œ(ì—ëŸ¬ê°€ ì•„ë‹˜)
+		if (target.find_first_of("$=") != std::string::npos) {
+			errors_.Add("E102", line, Severity::Warning);
+		}
+		//ì¤‘ë³µ ê²€ì‚¬ëŠ” í™•ì¥ëœ ì´ë¦„ ê¸°ì¤€
+		if (!context_.defined_targets.insert(target).second) {
+			errors_.Add("E103", line, Severity::Error);
+		}
+	}
+}
+
+void SyntaxChecker::CheckPrerequisites(const std::vector<std::string>& prerequisites, unsigned line) {
+	for (const auto& prerequisite : prerequisites) {
+		if (prerequisite.find('$') != std::string::npos) continue;  // ìë™ ë³€ìˆ˜ ë“±ì€ ì‹¤í–‰ ì‹œì ì— ì •í•´ì§
+		if (!IsKnownPrerequisite(prerequisite)) {
+			errors_.Add("E151", line, Severity::Error);
+		}
+	}
+}
+
+bool SyntaxChecker::IsKnownPrerequisite(const std::string& prerequisite) const {
+	if (context_.declared_targets.count(prerequisite) || context_.defined_targets.count(prerequisite)) return true;
+	if (context_.files.Exists(prerequisite)) return true;
+	if (!HasGlobChars(prerequisite)) return false;
+
+	//ì™€ì¼ë“œì¹´ë“œê°€ ì“°ì˜€ìœ¼ë©´ íŒŒì¼ê³¼ íƒ€ê¹ƒ ëª¨ë‘ì—ì„œ ì°¾ì•„ë³¸ë‹¤
+	if (!context_.files.Glob(prerequisite).empty()) return true;
+	std::regex rx(GlobToRegex(prerequisite));
+	for (const auto& target : context_.defined_targets) {
+		if (std::regex_match(target, rx)) return true;
+	}
+	return false;
+}

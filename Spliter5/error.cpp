@@ -1,51 +1,67 @@
-#include "error.h"
-
+ï»¿#include "error.h"
 
 const ErrorMessage& ErrorMessage::GetInstance() {
-    static ErrorMessage instance;
-    return instance;
+	static const ErrorMessage instance;
+	return instance;
 }
 
 ErrorMessage::ErrorMessage() {
-    //0¹øÁö-º¯¼ö ¿¡·¯
-    messages["E001"] = "Á¤È®ÇÑ ±¸¹®À» Ã£À» ¼ö ¾ø½À´Ï´Ù.";
-    messages["E011"] = "º¯¼ö ÀÌ¸§ÀÌ Àß¸øµÇ¾ú½À´Ï´Ù.";
-    messages["E012"] = "º¯¼ö ÀÌ¸§ÀÌ Áßº¹µÇ¾ú½À´Ï´Ù.";
-    messages["E013"] = "º¯¼ö°¡ ¼øÈ¯Á¤ÀÇµÇ¾î ÀÖ½À´Ï´Ù.";
+	//0ë²ˆì§€-êµ¬ë¬¸/ë³€ìˆ˜ ì—ëŸ¬
+	messages_["E001"] = "ì •í™•í•œ êµ¬ë¬¸ì„ ì°¾ì„ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.";
+	messages_["E011"] = "ë³€ìˆ˜ ì´ë¦„ì´ ì˜ëª»ë˜ì—ˆìŠµë‹ˆë‹¤.";
+	messages_["E012"] = "ë³€ìˆ˜ ì´ë¦„ì´ ì¤‘ë³µë˜ì—ˆìŠµë‹ˆë‹¤.";
+	messages_["E013"] = "ë³€ìˆ˜ê°€ ìˆœí™˜ì •ì˜ë˜ì–´ ìˆìŠµë‹ˆë‹¤.";
 
-    //1¹øÁö-¸í½ÃÀû ±ÔÄ¢ ¿¡·¯
-    messages["E101"] = "target¿¡ wildcard¸¦ »ç¿ëÇß½À´Ï´Ù.";
-    messages["E102"] = "target¿¡ Æ¯¼ö¹®ÀÚ¸¦ »ç¿ëÇß½À´Ï´Ù.";
-    messages["E103"] = "target ÀÌ¸§ÀÌ Áßº¹µÇ¾ú½À´Ï´Ù.";
+	//1ë²ˆì§€-ëª…ì‹œì  ê·œì¹™ ì—ëŸ¬
+	messages_["E101"] = "targetì— wildcardë¥¼ ì‚¬ìš©í–ˆìŠµë‹ˆë‹¤.";
+	messages_["E102"] = "targetì— íŠ¹ìˆ˜ë¬¸ìë¥¼ ì‚¬ìš©í–ˆìŠµë‹ˆë‹¤.";
+	messages_["E103"] = "target ì´ë¦„ì´ ì¤‘ë³µë˜ì—ˆìŠµë‹ˆë‹¤.";
 
-    messages["E151"] = "prerequisite°ú ÀÏÄ¡ÇÏ´Â target ¶Ç´Â ÆÄÀÏÀÌ Á¸ÀçÇÏÁö ¾Ê½À´Ï´Ù.";
+	messages_["E151"] = "prerequisiteê³¼ ì¼ì¹˜í•˜ëŠ” target ë˜ëŠ” íŒŒì¼ì´ ì¡´ì¬í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.";
 
-    //2¹øÁö-ÆĞÅÏ ±ÔÄ¢ ¿¡·¯
-    messages["E201"] = "pattern ruleÀÇ targetÀÌ patternÀÌ ¾Æ´Õ´Ï´Ù.";
-    messages["E202"] = "pattern ruleÀÇ target¿¡ µÎ°³ ÀÌ»óÀÇ % °¡ ÀÖ½À´Ï´Ù.";
-    // ...
-}
-void ErrorCollector::AddError(const std::string code, unsigned lines, Severity sev) {
-    Error err;
-    err.code = code;
-    err.line_number = lines;
-    err.severity = sev;
-    errors.push_back(err);
-}
+	//2ë²ˆì§€-íŒ¨í„´ ê·œì¹™ ì—ëŸ¬
+	messages_["E201"] = "pattern ruleì˜ targetì´ patternì´ ì•„ë‹™ë‹ˆë‹¤.";
+	messages_["E202"] = "pattern ruleì˜ targetì— ë‘ê°œ ì´ìƒì˜ % ê°€ ìˆìŠµë‹ˆë‹¤.";
+	messages_["E203"] = "static pattern ruleì˜ targetì´ target patternê³¼ ì¼ì¹˜í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.";
 
-
-void ErrorCollector::SetExternalErrors(const std::string& filename){
-    for (auto& i : errors) {
-        i.external_filename = filename;
-    }
-}
-
-void ErrorCollector::AppendErrorCollector(ErrorCollector& ec){
-    std::vector<Error> temp = ec.GetAll();
-    errors.insert(errors.end(), temp.begin(), temp.end());
+	//3ë²ˆì§€-íŒŒì¼/ì§€ì‹œì–´ ì—ëŸ¬
+	messages_["E300"] = "Makefileì„ ì—´ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.";
+	messages_["E301"] = "include íŒŒì¼ì„ ì°¾ì„ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.";
+	messages_["E302"] = "includeê°€ ìˆœí™˜ ì°¸ì¡°ë˜ì–´ ìˆìŠµë‹ˆë‹¤.";
 }
 
 std::string ErrorMessage::GetMessage(const std::string& code) const {
-    auto it = messages.find(code);
-    return (it != messages.end()) ? it->second : "Unknown error";
+	auto it = messages_.find(code);
+	return (it != messages_.end()) ? it->second : "Unknown error";
+}
+
+void ErrorCollector::Add(const std::string& code, unsigned line, Severity severity) {
+	Error error;
+	error.code = code;
+	error.line = line;
+	error.severity = severity;
+	errors_.push_back(error);
+}
+
+void ErrorCollector::Append(const ErrorCollector& other, const std::string& filename) {
+	for (Error error : other.errors_) {
+		if (error.filename.empty()) error.filename = filename;
+		errors_.push_back(error);
+	}
+}
+
+bool ErrorCollector::HasErrors() const {
+	for (const auto& error : errors_) {
+		if (error.severity != Severity::Warning) return true;
+	}
+	return false;
+}
+
+ErrorReporter::ErrorReporter(const ErrorMessage& messages) : messages_(messages) {}
+
+void ErrorReporter::Print(const ErrorCollector& errors, std::ostream& out) const {
+	for (const auto& error : errors.GetAll()) {
+		if (!error.filename.empty()) out << error.filename << ":";
+		out << error.line << ". [" << error.code << "] : " << messages_.GetMessage(error.code) << "\n";
+	}
 }
